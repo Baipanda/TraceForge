@@ -1,0 +1,37 @@
+services:
+  traceforge:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: traceforge-app
+    env_file:
+      - ../.env
+    ports:
+      - "${TRACEFORGE_PORT:-19090}:8090"
+    restart: unless-stopped
+    depends_on:
+      - traceforge-postgres
+      - traceforge-redis
+
+  traceforge-postgres:
+    image: docker.io/library/postgres:16-alpine
+    container_name: traceforge-postgres
+    environment:
+      POSTGRES_DB: traceforge
+      POSTGRES_USER: traceforge
+      POSTGRES_PASSWORD: traceforge_dev_password
+    ports:
+      - "${TRACEFORGE_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - traceforge-postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  traceforge-redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: traceforge-redis
+    ports:
+      - "${TRACEFORGE_REDIS_PORT:-16380}:6379"
+    restart: unless-stopped
+
+volumes:
+  traceforge-postgres-data:

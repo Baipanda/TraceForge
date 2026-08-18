@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traceforge"
+version = "0.1.0"
+description = "Workspace-native agent platform for engineering and security teams."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+server = [
+  "starlette>=0.37",
+  "uvicorn>=0.30",
+]
+dev = [
+  "pytest>=8.0",
+  "starlette>=0.37",
+  "uvicorn>=0.30",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

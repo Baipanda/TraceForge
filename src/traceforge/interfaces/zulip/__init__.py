@@ -1,0 +1,1 @@
+"""Zulip adapter."""

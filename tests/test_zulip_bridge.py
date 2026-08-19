@@ -3,6 +3,7 @@ from traceforge.interfaces.zulip.bridge import (
     ZulipTraceForgeBridge,
     _direct_message_recipients,
     _stream_name,
+    _typing_payload,
 )
 
 
@@ -53,3 +54,41 @@ def test_direct_message_recipients_excludes_bot() -> None:
     )
 
     assert recipients == ["alice@example.local"]
+
+
+def test_typing_payload_for_private_message_uses_participant_ids() -> None:
+    payload = _typing_payload(
+        {
+            "type": "private",
+            "sender_id": 9,
+            "display_recipient": [
+                {"id": 9, "email": "alice@example.local"},
+                {"id": 10, "email": "Jarvis-bot@traceforge.local"},
+            ],
+        },
+        op="start",
+    )
+
+    assert payload == {
+        "op": "start",
+        "type": "direct",
+        "to": "[9, 10]",
+    }
+
+
+def test_typing_payload_for_stream_message_preserves_topic() -> None:
+    payload = _typing_payload(
+        {
+            "type": "stream",
+            "stream_id": 42,
+            "subject": "安全排查",
+        },
+        op="stop",
+    )
+
+    assert payload == {
+        "op": "stop",
+        "type": "stream",
+        "stream_id": "42",
+        "topic": "安全排查",
+    }

@@ -48,7 +48,18 @@ class ZulipTraceForgeBridge:
             except KeyboardInterrupt:
                 logger.info("Zulip bridge stopped")
                 return
-            except Exception:
+            except Exception as exc:
+                if _is_bad_event_queue(exc):
+                    logger.warning("Zulip event queue expired; registering a new queue")
+                    queue = self._register_queue()
+                    queue_id = queue["queue_id"]
+                    last_event_id = int(queue["last_event_id"])
+                    logger.info(
+                        "Zulip bridge re-registered queue_id=%s last_event_id=%s",
+                        queue_id,
+                        last_event_id,
+                    )
+                    continue
                 logger.exception("Zulip bridge loop failed; retrying")
                 time.sleep(5)
 
@@ -81,10 +92,26 @@ class ZulipTraceForgeBridge:
             return
 
         logger.info("Handling Zulip message id=%s from=%s", message_id, sender_email)
-        traceforge_response = self._call_traceforge(event)
-        reply_text = _extract_reply_text(traceforge_response)
-        self._reply_to_message(message, reply_text)
-        logger.info("Replied to Zulip message id=%s", message_id)
+        self._start_progress(message)
+        succeeded = False
+        try:
+            traceforge_response = self._call_traceforge(event)
+            reply_text = _extract_reply_text(traceforge_response)
+            self._reply_to_message(message, reply_text)
+            succeeded = True
+            logger.info("Replied to Zulip message id=%s", message_id)
+        except Exception as exc:
+            logger.exception("TraceForge request failed for Zulip message id=%s", message_id)
+            try:
+                self._reply_to_message(
+                    message,
+                    "TraceForge 处理这条请求时遇到错误，动作没有被确认完成。"
+                    f"\n错误类型：{type(exc).__name__}",
+                )
+            except Exception:
+                logger.exception("Failed to send TraceForge error reply for message id=%s", message_id)
+        finally:
+            self._stop_progress(message, succeeded=succeeded)
 
     def _should_handle_message(self, message: dict[str, Any]) -> bool:
         message_type = str(message.get("type") or "")
@@ -127,6 +154,51 @@ class ZulipTraceForgeBridge:
             topic = str(message.get("subject") or message.get("topic") or "")
             payload = {"type": "stream", "to": stream, "topic": topic, "content": content}
         self._zulip_post("/api/v1/messages", payload)
+
+    def _start_progress(self, message: dict[str, Any]) -> None:
+        if self.settings.zulip_reactions_enabled:
+            self._safe_reaction(message, "eyes", add=True)
+        if self.settings.zulip_progress_enabled:
+            self._safe_typing(message, op="start")
+
+    def _stop_progress(self, message: dict[str, Any], *, succeeded: bool) -> None:
+        if self.settings.zulip_progress_enabled:
+            self._safe_typing(message, op="stop")
+        if self.settings.zulip_reactions_enabled:
+            self._safe_reaction(message, "eyes", add=False)
+            self._safe_reaction(message, "check_mark" if succeeded else "warning", add=True)
+
+    def _safe_typing(self, message: dict[str, Any], *, op: str) -> None:
+        payload = _typing_payload(message, op=op)
+        if payload is None:
+            return
+        try:
+            self._zulip_post("/api/v1/typing", payload)
+        except Exception as exc:
+            logger.warning("Unable to update Zulip typing state: %s", type(exc).__name__)
+
+    def _safe_reaction(self, message: dict[str, Any], emoji_name: str, *, add: bool) -> None:
+        message_id = message.get("id")
+        if message_id is None:
+            return
+        path = f"/api/v1/messages/{urllib.parse.quote(str(message_id), safe='')}/reactions"
+        try:
+            if add:
+                self._zulip_post(path, {"emoji_name": emoji_name})
+            else:
+                self._zulip_request(
+                    "DELETE",
+                    f"{path}?{urllib.parse.urlencode({'emoji_name': emoji_name})}",
+                    None,
+                    timeout_seconds=30,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Unable to update Zulip reaction message_id=%s emoji=%s: %s",
+                message_id,
+                emoji_name,
+                type(exc).__name__,
+            )
 
     def _zulip_get(
         self, path: str, params: dict[str, str], timeout_seconds: float = 30
@@ -206,11 +278,53 @@ def _direct_message_recipients(message: dict[str, Any], bot_email: str) -> list[
     return recipients
 
 
+def _typing_payload(message: dict[str, Any], *, op: str) -> dict[str, str] | None:
+    message_type = str(message.get("type") or "")
+    if message_type == "private":
+        user_ids: list[int] = []
+        display_recipient = message.get("display_recipient")
+        if isinstance(display_recipient, list):
+            for item in display_recipient:
+                if isinstance(item, dict) and item.get("id") is not None:
+                    try:
+                        user_ids.append(int(item["id"]))
+                    except (TypeError, ValueError):
+                        continue
+        if not user_ids and message.get("sender_id") is not None:
+            try:
+                user_ids.append(int(message["sender_id"]))
+            except (TypeError, ValueError):
+                return None
+        if not user_ids:
+            return None
+        return {
+            "op": op,
+            "type": "direct",
+            "to": json.dumps(user_ids),
+        }
+
+    stream_id = message.get("stream_id")
+    topic = str(message.get("subject") or message.get("topic") or "")
+    if stream_id is None or not topic:
+        return None
+    return {
+        "op": op,
+        "type": "stream",
+        "stream_id": str(stream_id),
+        "topic": topic,
+    }
+
+
 def _plain_text(html_or_text: str) -> str:
     text = html_or_text.replace("<p>", "").replace("</p>", " ")
     for token in ("<strong>", "</strong>", "<em>", "</em>"):
         text = text.replace(token, "")
     return text.strip()
+
+
+def _is_bad_event_queue(exc: Exception) -> bool:
+    text = str(exc)
+    return "BAD_EVENT_QUEUE_ID" in text or "Bad event queue ID" in text
 
 
 def main() -> None:

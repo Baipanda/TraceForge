@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from traceforge.domain.events import WorkspaceEvent
+from traceforge.core.events import WorkspaceEvent
 
 
 class RunStatus(StrEnum):
@@ -53,7 +53,7 @@ class PromptBundle:
     """Harness 组装后的模型输入。"""
 
     system_prompt: str
-    messages: list[dict[str, str]]
+    messages: list[dict[str, Any]]
     tools: list[dict[str, Any]] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
     context_items: list[ContextItem] = field(default_factory=list)
@@ -89,3 +89,20 @@ class GatewayResponse:
     reply_text: str
     status: RunStatus
     evidence: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ModelToolCall:
+    """A structured tool call returned by the model."""
+
+    call_id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ModelTurn:
+    """One model turn, which may contain text, tool calls, or both."""
+
+    content: str = ""
+    tool_calls: list[ModelToolCall] = field(default_factory=list)

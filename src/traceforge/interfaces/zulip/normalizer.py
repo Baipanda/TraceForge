@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import html
+import re
 from typing import Any
 
-from traceforge.domain.events import (
+from traceforge.core.events import (
     ActorRef,
     EventKind,
     EventSource,
@@ -62,4 +64,7 @@ def _display_recipient_name(value: Any) -> str | None:
 
 
 def _strip_zulip_markup(text: str) -> str:
-    return text.replace("<p>", "").replace("</p>", "").strip()
+    text = html.unescape(text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()

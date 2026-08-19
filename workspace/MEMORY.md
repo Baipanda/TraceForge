@@ -8,6 +8,7 @@
 - Jarvis 通过本机进程版 Zulip bridge 接入 TraceForge。
 - TraceForge API 通过 DeepSeek 生成回复。
 - Todo、RAG、MCP 和 Gateway/Runtime 编排仍在逐步建设。
+- 当前已加入一个本地身份种子：`Neymar / neymar@traceforge.local`，用于 Zulip 用户名和业务身份的映射演示。
 
 ## 记忆边界
 

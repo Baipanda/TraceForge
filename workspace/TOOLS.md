@@ -7,6 +7,15 @@ TraceForge 的 Tool 有两种来源：
 
 Agent 只使用逻辑工具名，不关心工具的具体实现来源。
 
+## 当前已落地的工具
+
+- `people.resolve`
+- `todo.create`
+- `todo.list`
+- `todo.update`
+- `todo.delete`
+- `todo.summary`
+
 ## 工具结果
 
 每个工具都应该返回：

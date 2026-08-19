@@ -1,0 +1,11 @@
+[
+  {
+    "canonical_name": "Neymar",
+    "email": "neymar@traceforge.local",
+    "zulip_username": "Neymar",
+    "database_username": "neymar",
+    "aliases": ["Neymar Jr", "Neymar Junior"],
+    "notes": "TraceForge demo identity for Zulip/DB mapping."
+  }
+]
+

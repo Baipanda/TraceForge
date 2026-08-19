@@ -40,12 +40,21 @@ class SkillLoader:
     def select_for_text(self, text: str) -> list[SkillDefinition]:
         lowered = text.lower()
         selected: list[str] = []
+        create_requested = any(
+            token in lowered for token in ("创建", "新增", "发布", "安排", "记录")
+        )
+        list_requested = any(
+            token in lowered for token in ("查询", "查看", "列出", "展示", "有哪些", "list")
+        )
+        summary_requested = any(
+            token in lowered for token in ("总结", "summary", "归纳", "汇总")
+        )
 
-        if any(token in lowered for token in ("todo", "待办", "任务", "发布", "创建")):
+        if create_requested:
             selected.append("todo-create")
-        if any(token in lowered for token in ("查询", "查看", "列出", "list")):
+        elif list_requested:
             selected.append("todo-list")
-        if any(token in lowered for token in ("总结", "summary", "归纳")):
+        if summary_requested:
             selected.append("topic-summary")
 
         result: list[SkillDefinition] = []

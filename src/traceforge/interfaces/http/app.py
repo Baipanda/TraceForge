@@ -8,8 +8,29 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
+from traceforge.agent.harness import PromptHarness
+from traceforge.agent.runtime import AgentRuntime
 from traceforge.application.process_event import ProcessWorkspaceEvent
+from traceforge.config import get_settings
+from traceforge.gateway.workspace_gateway import WorkspaceGateway
+from traceforge.infrastructure.llm.deepseek import DeepSeekClient
 from traceforge.interfaces.zulip.normalizer import normalize_zulip_payload
+
+
+_processor = ProcessWorkspaceEvent()
+_settings = get_settings()
+_model = DeepSeekClient(_settings) if _settings.llm_enabled else None
+_runtime = AgentRuntime(
+    harness=PromptHarness(),
+    tool_registry=_processor.tool_registry,
+    model=_model,
+    max_model_turns=_settings.agent_max_model_turns,
+    max_tool_calls=_settings.agent_max_tool_calls,
+)
+_gateway = WorkspaceGateway(
+    handler=_runtime,
+    session_recorder=_processor.repository.record_session,
+)
 
 
 async def homepage(_: Request) -> PlainTextResponse:
@@ -23,7 +44,7 @@ async def health(_: Request) -> JSONResponse:
 async def ingest_zulip_event(request: Request) -> JSONResponse:
     payload = await _json_body(request)
     event = normalize_zulip_payload(payload)
-    result = ProcessWorkspaceEvent().execute(event)
+    result = _gateway.route(event)
     return JSONResponse(
         {
             "ok": True,
@@ -33,12 +54,26 @@ async def ingest_zulip_event(request: Request) -> JSONResponse:
                 "external_event_id": event.external_event_id,
             },
             "result": {
-                "intent": result.intent,
+                "intent": _intent_from_evidence(result.evidence),
                 "reply_text": result.reply_text,
                 "evidence": result.evidence,
             },
         }
     )
+
+
+def _intent_from_evidence(evidence: list[dict[str, Any]]) -> str:
+    for item in evidence:
+        if item.get("type") == "intent":
+            action = item.get("action")
+            if isinstance(action, str):
+                return f"todo.{action}" if action != "unknown" else action
+    for item in evidence:
+        if item.get("type") == "tool_call":
+            tool_name = item.get("tool_name")
+            if isinstance(tool_name, str) and tool_name.startswith("todo."):
+                return tool_name
+    return "agent"
 
 
 async def _json_body(request: Request) -> dict[str, Any]:

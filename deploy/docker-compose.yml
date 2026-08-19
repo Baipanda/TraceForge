@@ -6,8 +6,12 @@ services:
     container_name: traceforge-app
     env_file:
       - ../.env
+    environment:
+      TRACEFORGE_DB_PATH: /data/traceforge.sqlite3
     ports:
       - "${TRACEFORGE_PORT:-19090}:8090"
+    volumes:
+      - traceforge-app-data:/data
     restart: unless-stopped
     depends_on:
       - traceforge-postgres
@@ -34,4 +38,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  traceforge-app-data:
   traceforge-postgres-data:

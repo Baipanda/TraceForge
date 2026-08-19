@@ -6,8 +6,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from traceforge.agent.models import ModelToolCall, ModelTurn
 from traceforge.config import TraceForgeSettings
-from traceforge.domain.events import WorkspaceEvent
+from traceforge.core.events import WorkspaceEvent
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,36 @@ class DeepSeekClient:
         ]
         return self.chat(messages)
 
+    def complete(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, object]],
+        tools: list[dict[str, object]] | None = None,
+    ) -> ModelTurn:
+        response = self._request(
+            [
+                {"role": "system", "content": system_prompt},
+                *messages,
+            ],
+            tools=tools,
+        )
+        message = _extract_message(response)
+        return ModelTurn(
+            content=str(message.get("content") or "").strip(),
+            tool_calls=_extract_tool_calls(message),
+        )
+
     def chat(self, messages: list[dict[str, str]]) -> LLMReply:
+        payload = self._request(messages)
+        content = _extract_content(payload)
+        return LLMReply(content=content, model=self._model)
+
+    def _request(
+        self,
+        messages: list[dict[str, object]],
+        *,
+        tools: list[dict[str, object]] | None = None,
+    ) -> dict[str, Any]:
         body = {
             "model": self._model,
             "messages": messages,
@@ -68,6 +98,18 @@ class DeepSeekClient:
             "temperature": 0.2,
             "max_tokens": 600,
         }
+        if tools:
+            body["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("schema", {}),
+                    },
+                }
+                for tool in tools
+            ]
         request = urllib.request.Request(
             url=f"{self._base_url}/chat/completions",
             data=json.dumps(body).encode("utf-8"),
@@ -87,8 +129,48 @@ class DeepSeekClient:
         except urllib.error.URLError as exc:
             raise RuntimeError(f"DeepSeek API request failed: {exc.reason}") from exc
 
-        content = _extract_content(payload)
-        return LLMReply(content=content, model=self._model)
+        return payload
+
+
+def _extract_message(payload: dict[str, Any]) -> dict[str, Any]:
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("DeepSeek API response missing choices")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("DeepSeek API response missing message")
+    return message
+
+
+def _extract_tool_calls(message: dict[str, Any]) -> list[ModelToolCall]:
+    raw_calls = message.get("tool_calls")
+    if not isinstance(raw_calls, list):
+        return []
+    calls: list[ModelToolCall] = []
+    for index, raw_call in enumerate(raw_calls):
+        if not isinstance(raw_call, dict):
+            continue
+        function = raw_call.get("function")
+        if not isinstance(function, dict):
+            continue
+        name = function.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        raw_arguments = function.get("arguments") or "{}"
+        try:
+            arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Invalid tool arguments for {name}") from exc
+        if not isinstance(arguments, dict):
+            raise RuntimeError(f"Tool arguments for {name} must be an object")
+        calls.append(
+            ModelToolCall(
+                call_id=str(raw_call.get("id") or f"tool_call_{index}"),
+                name=name,
+                arguments=arguments,
+            )
+        )
+    return calls
 
 
 def _extract_content(payload: dict[str, Any]) -> str:

@@ -22,7 +22,7 @@ workspace/               # Agent 工作区
 当前运行边界：
 
 ```text
-Zulip Adapter -> HTTP API -> 当前事件处理器
+Zulip Adapter -> HTTP API -> Context Builder -> Session Resolver -> Gateway -> 当前事件处理器
 ```
 
 后续 Agent 化边界：
@@ -33,7 +33,7 @@ gateway/         # 统一入口、会话、权限、路由、审计入口
 agent/           # Runtime、Harness、SkillLoader、运行轨迹模型
 tools/           # ToolRegistry、本地工具与未来 MCP 工具适配
 application/     # 确定性业务用例，例如 Todo 写入、权限校验、事务编排
-domain/          # 核心业务对象和规则
+core/            # 核心业务对象和规则
 infrastructure/  # LLM、数据库、Zulip API、外部服务实现
 ```
 
@@ -41,22 +41,33 @@ infrastructure/  # LLM、数据库、Zulip API、外部服务实现
 
 ## 当前状态
 
-已完成最小 Zulip + LLM 闭环：
+已完成最小 Zulip + 意图路由 + Todo 持久化闭环：
 
 ```text
 Zulip @Jarvis
   -> traceforge.interfaces.zulip.bridge
   -> POST /api/events/zulip
   -> WorkspaceEvent
-  -> DeepSeek reply
+  -> Context Builder
+  -> Session Resolver
+  -> WorkspaceGateway
+  -> AgentRuntime / Application
+  -> todo.* Tool
+  -> TodoWorkflow / SQLite
   -> Jarvis 回帖到同一 Topic
 ```
 
 第一个里程碑是 Topic 感知的 Todo Agent：
 
 ```text
-Zulip message -> WorkspaceEvent -> Context Pack -> Agent Workflow -> Todo/RAG/Git tools -> Evidence-based reply
+Zulip message -> WorkspaceEvent -> Intent Router -> todo.* Tool -> TodoWorkflow -> Repository -> Evidence-based reply
 ```
+
+本地运行默认使用 `.traceforge/traceforge.sqlite3`，表结构包括：
+
+- `traceforge_todos`
+- `traceforge_todo_events`
+- `traceforge_sessions`
 
 ## 开发
 

@@ -46,12 +46,17 @@ class TraceForgeSettings:
     deepseek_base_url: str
     deepseek_model: str
     traceforge_api_url: str
+    traceforge_db_path: str
     zulip_url: str
     zulip_email: str
     zulip_api_key: str
     zulip_bot_name: str
     zulip_verify_ssl: bool
     zulip_poll_interval_seconds: float
+    zulip_progress_enabled: bool = True
+    zulip_reactions_enabled: bool = True
+    agent_max_model_turns: int = 8
+    agent_max_tool_calls: int = 12
 
     @property
     def llm_enabled(self) -> bool:
@@ -65,6 +70,10 @@ def get_settings() -> TraceForgeSettings:
         deepseek_base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         deepseek_model=os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
         traceforge_api_url=os.environ.get("TRACEFORGE_API_URL", "http://127.0.0.1:19090"),
+        traceforge_db_path=os.environ.get(
+            "TRACEFORGE_DB_PATH",
+            str(Path(__file__).resolve().parents[2] / ".traceforge" / "traceforge.sqlite3"),
+        ),
         zulip_url=first_env("TRACEFORGE_ZULIP_URL", "ZULIP_URL", default="https://127.0.0.1:18443"),
         zulip_email=first_env(
             "TRACEFORGE_ZULIP_EMAIL", "ZULIP_EMAIL", default="Jarvis-bot@traceforge.local"
@@ -75,4 +84,8 @@ def get_settings() -> TraceForgeSettings:
         zulip_poll_interval_seconds=float(
             first_env("TRACEFORGE_ZULIP_POLL_INTERVAL_SECONDS", "ZULIP_POLL_INTERVAL_SECONDS", default="1.0")
         ),
+        zulip_progress_enabled=env_bool("TRACEFORGE_ZULIP_PROGRESS_ENABLED", True),
+        zulip_reactions_enabled=env_bool("TRACEFORGE_ZULIP_REACTIONS_ENABLED", True),
+        agent_max_model_turns=int(os.environ.get("TRACEFORGE_AGENT_MAX_MODEL_TURNS", "8")),
+        agent_max_tool_calls=int(os.environ.get("TRACEFORGE_AGENT_MAX_TOOL_CALLS", "12")),
     )

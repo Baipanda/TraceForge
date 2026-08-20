@@ -6,6 +6,7 @@ COPY pyproject.toml README.md ./
 RUN pip install --no-cache-dir "starlette>=0.37" "uvicorn>=0.30"
 
 COPY src ./src
+COPY workspace ./workspace
 
 ENV PYTHONPATH=/app/src
 

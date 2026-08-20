@@ -19,6 +19,8 @@ workspace/               # Agent 工作区
 
 `src/traceforge` 负责稳定的系统实现；`workspace` 负责 Agent 身份、行为约定、Skills 和可调整的业务流程。
 
+当前已经加入 memory 子系统，用来承接会话摘要、身份事实和后续可扩展的长期记忆。
+
 当前运行边界：
 
 ```text
@@ -51,7 +53,7 @@ Zulip @Jarvis
   -> Context Builder
   -> Session Resolver
   -> WorkspaceGateway
-  -> AgentRuntime / Application
+  -> MemoryService / AgentRuntime / Application
   -> todo.* Tool
   -> TodoWorkflow / SQLite
   -> Jarvis 回帖到同一 Topic
@@ -68,6 +70,7 @@ Zulip message -> WorkspaceEvent -> Intent Router -> todo.* Tool -> TodoWorkflow 
 - `traceforge_todos`
 - `traceforge_todo_events`
 - `traceforge_sessions`
+- `traceforge_memory_entries`
 
 ## 开发
 

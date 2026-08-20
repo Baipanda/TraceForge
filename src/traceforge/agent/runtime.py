@@ -8,6 +8,7 @@ from traceforge.agent.harness import PromptHarness
 from traceforge.agent.models import (
     AgentRequest,
     AgentRun,
+    ContextItem,
     GatewayResponse,
     ModelTurn,
     ModelToolCall,
@@ -59,7 +60,11 @@ class AgentRuntime:
         run = AgentRun(request=request, status=RunStatus.RUNNING)
         tool_schemas = self.tool_registry.list_schemas()
         model_tool_schemas, tool_name_map = _model_tool_schemas(tool_schemas)
-        bundle = self.harness.build(request, tool_schemas=model_tool_schemas)
+        bundle = self.harness.build(
+            request,
+            context_items=_context_items_from_metadata(request.metadata.get("memory_context_items")),
+            tool_schemas=model_tool_schemas,
+        )
         messages = list(bundle.messages)
         evidence: list[dict[str, object]] = [
             {
@@ -348,3 +353,20 @@ def _provider_safe_tool_name(name: str) -> str:
 
 def _tool_call_fingerprint(name: str, arguments: dict[str, object]) -> str:
     return f"{name}:{json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)}"
+
+
+def _context_items_from_metadata(value: object) -> list[ContextItem] | None:
+    if not isinstance(value, list):
+        return None
+    items: list[ContextItem] = []
+    for item in value:
+        if isinstance(item, ContextItem):
+            items.append(item)
+        elif isinstance(item, dict):
+            source = str(item.get("source") or "memory")
+            content = str(item.get("content") or "")
+            metadata = item.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+            items.append(ContextItem(source=source, content=content, metadata=metadata))
+    return items or None

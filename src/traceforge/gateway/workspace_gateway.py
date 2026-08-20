@@ -6,6 +6,7 @@ from traceforge.application.process_event import ProcessWorkspaceEvent, Processe
 from traceforge.agent.models import AgentRequest, GatewayResponse, RunStatus
 from traceforge.context.zulip import ZulipContextBuilder
 from traceforge.core.events import WorkspaceEvent
+from traceforge.memory.service import MemoryService
 from traceforge.session.keys import SessionKeyResolver
 
 
@@ -53,15 +54,20 @@ class WorkspaceGateway:
         context_builder: ZulipContextBuilder | None = None,
         session_resolver: SessionKeyResolver | None = None,
         session_recorder: object | None = None,
+        memory_service: MemoryService | None = None,
     ) -> None:
         self._handler = handler
         self._context_builder = context_builder or ZulipContextBuilder()
         self._session_resolver = session_resolver or SessionKeyResolver()
         self._session_recorder = session_recorder
+        self._memory_service = memory_service
 
     def route(self, event: WorkspaceEvent) -> GatewayResponse:
         context = self._context_builder.build(event)
         session_key = self._session_resolver.resolve(context)
+        memory_context_items = []
+        if self._memory_service is not None:
+            memory_context_items = self._memory_service.build_context(event, session_key, context)
         request = AgentRequest(
             event=event,
             session_key=session_key,
@@ -69,10 +75,20 @@ class WorkspaceGateway:
                 "source": event.source.value,
                 "kind": event.kind.value,
                 "zulip_context": context.to_dict(),
+                "memory_context_items": memory_context_items,
             },
         )
         if callable(self._session_recorder):
             self._session_recorder(event, session_key)
         if self._handler is None:
             raise RuntimeError("WorkspaceGateway handler is not configured")
-        return self._handler.handle(request)
+        response = self._handler.handle(request)
+        if self._memory_service is not None:
+            self._memory_service.record_turn(
+                event,
+                session_key,
+                response,
+                conversation=context,
+                request_id=request.request_id,
+            )
+        return response

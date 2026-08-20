@@ -199,6 +199,7 @@ Harness 负责把这些东西组装成模型输入：
 ```
 
 TraceForge 当前的 `PromptHarness` 已经能加载 `AGENTS.md`、`IDENTITY.md`、`TOOLS.md`、`MEMORY.md` 和匹配的 Skill。
+同时，`MemoryService` 会把会话摘要和身份事实写入 SQLite，并在下一轮请求前把相关记忆注入 Harness。
 HTTP 主链路已经统一进入 AgentRuntime，Todo 也由 Runtime 选择 Tool，
 但最终事务仍然由确定性 Application 保证。
 

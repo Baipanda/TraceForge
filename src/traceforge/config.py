@@ -57,6 +57,8 @@ class TraceForgeSettings:
     zulip_reactions_enabled: bool = True
     agent_max_model_turns: int = 8
     agent_max_tool_calls: int = 12
+    memory_enabled: bool = True
+    memory_search_limit: int = 8
 
     @property
     def llm_enabled(self) -> bool:
@@ -88,4 +90,6 @@ def get_settings() -> TraceForgeSettings:
         zulip_reactions_enabled=env_bool("TRACEFORGE_ZULIP_REACTIONS_ENABLED", True),
         agent_max_model_turns=int(os.environ.get("TRACEFORGE_AGENT_MAX_MODEL_TURNS", "8")),
         agent_max_tool_calls=int(os.environ.get("TRACEFORGE_AGENT_MAX_TOOL_CALLS", "12")),
+        memory_enabled=env_bool("TRACEFORGE_MEMORY_ENABLED", True),
+        memory_search_limit=int(os.environ.get("TRACEFORGE_MEMORY_SEARCH_LIMIT", "8")),
     )

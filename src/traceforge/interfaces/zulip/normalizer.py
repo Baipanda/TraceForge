@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from traceforge.core.events import (
@@ -54,6 +55,7 @@ def normalize_zulip_payload(payload: dict[str, Any]) -> WorkspaceEvent:
             "raw": payload,
         },
         external_event_id=str(payload.get("id") or message_id) if (payload.get("id") or message_id) else None,
+        occurred_at=_parse_zulip_timestamp(message.get("timestamp") or payload.get("timestamp")),
     )
 
 
@@ -61,6 +63,24 @@ def _display_recipient_name(value: Any) -> str | None:
     if isinstance(value, str):
         return value
     return None
+
+
+def _parse_zulip_timestamp(value: Any) -> datetime:
+    """Prefer Zulip message timestamp; fall back to server UTC now."""
+    if value is None or value == "":
+        return datetime.now(timezone.utc)
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        text = str(value).strip()
+        if text.isdigit():
+            return datetime.fromtimestamp(float(text), tz=timezone.utc)
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return datetime.now(timezone.utc)
 
 
 def _strip_zulip_markup(text: str) -> str:

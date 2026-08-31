@@ -10,3 +10,4 @@ build/
 .env
 .env.*
 !.env.example
+.traceforge/

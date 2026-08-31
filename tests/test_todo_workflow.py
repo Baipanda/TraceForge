@@ -8,7 +8,7 @@ from traceforge.infrastructure.identity.people_directory import PeopleDirectory
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
 
 
-def _event(text: str, topic: str = "SQL 注入排查", email: str = "alice@example.local") -> WorkspaceEvent:
+def _event(text: str, topic: str = "agent开发", email: str = "alice@example.local") -> WorkspaceEvent:
     return WorkspaceEvent(
         source=EventSource.ZULIP,
         kind=EventKind.MESSAGE_CREATED,
@@ -65,10 +65,13 @@ def test_todo_repository_create_and_list(tmp_path) -> None:
     assert created.todo.title == "检查认证模块 SQL 注入风险"
     assert created.todo.proposer_email == "alice@example.local"
     assert created.todo.assignee_email == "neymar@traceforge.local"
+    assert created.todo.subtree_id
+    assert "组织树" in created.reply_text or "软件" in (created.todo.subtree_label or "")
     assert "发布者" in created.reply_text
     assert "执行者" in created.reply_text
     assert listed.todos
     assert listed.todos[0].id == created.todo.id
+    assert listed.todos[0].description is None
 
 
 def test_todo_create_requires_assignee(tmp_path) -> None:
@@ -85,10 +88,54 @@ def test_todo_create_requires_assignee(tmp_path) -> None:
     assert not repo.list_todos(TodoFilter(workspace_id="demo"))
 
 
+def test_todo_create_requires_subtree_without_mappable_topic(tmp_path) -> None:
+    repo = SqliteTodoRepository(tmp_path / "traceforge.sqlite3")
+    workflow = TodoWorkflow(repo)
+    from traceforge.core.todos import TodoCommand
+
+    result = workflow.handle(
+        _event("给 Neymar 发布一个 todo：无 Topic 匹配的任务", topic="random-topic"),
+        TodoCommand(
+            action=TodoAction.CREATE,
+            raw_text="给 Neymar 发布一个 todo：无 Topic 匹配的任务",
+            title="无 Topic 匹配的任务",
+            assignee_name="Neymar",
+        ),
+    )
+    assert result.todo is None
+    assert "组织树" in result.reply_text or "subtree" in result.reply_text.lower()
+
+
+def test_todo_list_include_description(tmp_path) -> None:
+    repo = SqliteTodoRepository(tmp_path / "traceforge.sqlite3")
+    workflow = TodoWorkflow(repo)
+    from traceforge.core.todos import TodoCommand
+
+    created = workflow.handle(
+        _event("x"),
+        TodoCommand(
+            action=TodoAction.CREATE,
+            raw_text="t",
+            title="带描述任务",
+            description="这是详细描述",
+            assignee_name="Neymar",
+            subtree_code="software.cloud.agent",
+        ),
+    )
+    assert created.todo is not None
+    listed = workflow.handle(
+        _event("列出"),
+        TodoCommand(action=TodoAction.LIST, raw_text="列出", include_description=True),
+    )
+    assert listed.todos
+    assert listed.todos[0].description == "这是详细描述"
+    assert "描述" in listed.reply_text
+
+
 def test_process_workspace_event_routes_todo_summary(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("TRACEFORGE_DB_PATH", str(tmp_path / "traceforge.sqlite3"))
     processor = ProcessWorkspaceEvent()
-    event = _event("总结一下当前 todo", topic="SQL 注入排查")
+    event = _event("总结一下当前 todo", topic="agent开发")
 
     result = processor.execute(event)
 

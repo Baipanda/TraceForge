@@ -158,6 +158,7 @@ class AgentRuntime:
                 return turn.content.strip() or "模型没有生成可展示的回复。"
 
             messages.append(_assistant_tool_message(turn))
+            turn_tool_results: list[ToolResult] = []
             for model_call in turn.tool_calls:
                 actual_tool_name = tool_name_map.get(model_call.name, model_call.name)
                 call_fingerprint = _tool_call_fingerprint(actual_tool_name, model_call.arguments)
@@ -181,6 +182,7 @@ class AgentRuntime:
                     )
                 else:
                     tool_result = self._execute_tool(request, model_call, tool_name_map)
+                turn_tool_results.append(tool_result)
                 run.steps.append(
                     RunStep(
                         kind=StepKind.TOOL,
@@ -209,6 +211,19 @@ class AgentRuntime:
                     }
                 )
                 messages.append(_tool_result_message(model_call.call_id, tool_result))
+
+            # Todo tools already produce user-facing cards (with times, no internal ids).
+            # Prefer that text so the model cannot drop fields while paraphrasing.
+            preferred_reply = _preferred_user_reply(turn_tool_results)
+            if preferred_reply:
+                evidence.append(
+                    {
+                        "type": "reply_source",
+                        "source": "tool.reply_text",
+                        "tools": [item.tool_name for item in turn_tool_results],
+                    }
+                )
+                return preferred_reply
 
         return self._finalize_after_budget(run, system_prompt, messages, evidence)
 
@@ -259,7 +274,6 @@ class AgentRuntime:
         arguments.setdefault("workspace_id", request.event.location.workspace_id)
         arguments.setdefault("channel_id", request.event.location.channel_id)
         arguments.setdefault("channel_name", request.event.location.channel_name)
-        arguments.setdefault("topic", request.event.location.topic)
         arguments.setdefault("source", request.event.source.value)
         arguments.setdefault("kind", request.event.kind.value)
         arguments.setdefault("actor_name", request.event.actor.display_name)
@@ -267,6 +281,16 @@ class AgentRuntime:
         arguments.setdefault("actor_external_id", request.event.actor.external_id)
         arguments.setdefault("external_event_id", request.event.external_event_id)
         arguments.setdefault("raw_text", request.text)
+        # Always stamp tools with the Zulip message time so completion/create times
+        # match the chat bubble, not server "now" during the agent loop.
+        arguments["occurred_at"] = request.event.occurred_at.isoformat()
+
+        message_type = _message_type_from_request(request)
+        arguments.setdefault("message_type", message_type)
+        # Only auto-scope tool calls to the current Topic for stream conversations.
+        # Private chats should not inherit a Topic filter for list/summary style queries.
+        if message_type != "private":
+            arguments.setdefault("topic", request.event.location.topic)
         actual_tool_name = tool_name_map.get(call.name, call.name)
         try:
             return self.tool_registry.call(
@@ -349,6 +373,48 @@ def _provider_safe_tool_name(name: str) -> str:
         character if character.isalnum() or character in {"_", "-"} else "_"
         for character in name
     )
+
+
+def _message_type_from_request(request: AgentRequest) -> str:
+    metadata = request.metadata or {}
+    zulip_context = metadata.get("zulip_context")
+    if isinstance(zulip_context, dict):
+        message_type = str(zulip_context.get("message_type") or "").strip().lower()
+        if message_type:
+            return message_type
+    payload = request.event.payload or {}
+    message_type = str(payload.get("message_type") or "").strip().lower()
+    if message_type:
+        return message_type
+    raw = payload.get("raw")
+    if isinstance(raw, dict):
+        message = raw.get("message") if isinstance(raw.get("message"), dict) else raw
+        if isinstance(message, dict):
+            message_type = str(message.get("type") or "").strip().lower()
+            if message_type:
+                return message_type
+    return "unknown"
+
+
+def _preferred_user_reply(results: list[ToolResult]) -> str | None:
+    """Use Application-authored reply_text from terminal Todo tools when present."""
+    preferred_tools = {
+        "todo.list",
+        "todo.create",
+        "todo.update",
+        "todo.delete",
+        "todo.summary",
+        "subtree.children",
+        "subtree.todos",
+    }
+    for result in reversed(results):
+        if not result.ok or result.tool_name not in preferred_tools:
+            continue
+        data = result.data if isinstance(result.data, dict) else {}
+        reply = data.get("reply_text")
+        if isinstance(reply, str) and reply.strip():
+            return reply.strip()
+    return None
 
 
 def _tool_call_fingerprint(name: str, arguments: dict[str, object]) -> str:

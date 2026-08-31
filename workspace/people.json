@@ -6,6 +6,21 @@
     "database_username": "neymar",
     "aliases": ["Neymar Jr", "Neymar Junior"],
     "notes": "TraceForge demo identity for Zulip/DB mapping."
+  },
+  {
+    "canonical_name": "Peter",
+    "email": "peter@traceforge.local",
+    "zulip_username": "Peter",
+    "database_username": "peter",
+    "aliases": ["Pete"],
+    "notes": "TraceForge demo identity for Zulip/DB mapping."
+  },
+  {
+    "canonical_name": "Gwen",
+    "email": "gwen@traceforge.local",
+    "zulip_username": "Gwen",
+    "database_username": "gwen",
+    "aliases": ["Gwendolyn"],
+    "notes": "TraceForge demo identity for Zulip/DB mapping."
   }
 ]
-

@@ -1,0 +1,22 @@
+[Unit]
+Description=TraceForge Zulip Bridge (Jarvis)
+Documentation=file:///home/baijiaoyang/workspace/TraceForge/docs/deployment/DEPLOYMENT_STATUS.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/baijiaoyang/workspace/TraceForge
+Environment=PYTHONPATH=/home/baijiaoyang/workspace/TraceForge/src
+Environment=TRACEFORGE_ENV_FILE=/home/baijiaoyang/workspace/TraceForge/.env
+EnvironmentFile=-/home/baijiaoyang/workspace/TraceForge/.env
+ExecStart=/home/baijiaoyang/miniconda3/bin/python /home/baijiaoyang/workspace/TraceForge/scripts/run_zulip_bridge.py
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=20
+StandardOutput=append:/home/baijiaoyang/workspace/TraceForge/.traceforge/logs/zulip-bridge.log
+StandardError=append:/home/baijiaoyang/workspace/TraceForge/.traceforge/logs/zulip-bridge.log
+
+[Install]
+WantedBy=default.target

@@ -38,10 +38,32 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
                     "channel_name": {"type": "string"},
                     "topic": {"type": "string"},
                     "title": {"type": "string"},
-                    "description": {"type": "string"},
+                    "description": {
+                        "type": "string",
+                        "description": "Optional task details; not shown in list unless requested later",
+                    },
                     "assignee_name": {"type": "string"},
                     "assignee_email": {"type": "string"},
                     "priority": {"type": "integer"},
+                    "subtree_id": {"type": "string"},
+                    "subtree_code": {
+                        "type": "string",
+                        "description": (
+                            "Org subtree code, e.g. software.cloud.agent or other.football. "
+                            "Required unless Topic maps automatically (agent开发/football/...)."
+                        ),
+                    },
+                    "subtree_name": {
+                        "type": "string",
+                        "description": "Org subtree display name fragment, e.g. TraceForge Agent",
+                    },
+                    "subtree_path": {
+                        "type": "string",
+                        "description": (
+                            "Hierarchical name path, e.g. 硬件/主控板/EMI测试. "
+                            "Missing L2/L3 nodes are auto-created under an existing L1."
+                        ),
+                    },
                 },
                 "required": ["workspace_id", "title"],
                 "anyOf": [
@@ -55,14 +77,40 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
     registry.register(
         RegisteredTool(
             name="todo.list",
-            description="List TraceForge Todos",
+            description=(
+                "List TraceForge Todos with optional filters. "
+                "Description is omitted by default; set include_description=true only when the user asks. "
+                "When many rows match, the tool returns a Topic/assignee/status summary "
+                "instead of a long detail list. Never show database ids to users."
+            ),
             schema={
                 "type": "object",
                 "properties": {
                     "workspace_id": {"type": "string"},
                     "status": {"type": "string"},
                     "assignee_email": {"type": "string"},
+                    "assignee_name": {"type": "string"},
+                    "proposer_email": {"type": "string"},
+                    "proposer_name": {"type": "string"},
                     "topic": {"type": "string"},
+                    "channel_name": {"type": "string"},
+                    "priority": {"type": "integer"},
+                    "title_contains": {"type": "string"},
+                    "include_description": {
+                        "type": "boolean",
+                        "description": "Include description column only when user explicitly asks",
+                    },
+                    "subtree_code": {"type": "string"},
+                    "subtree_name": {"type": "string"},
+                    "subtree_path": {"type": "string"},
+                    "include_descendants": {
+                        "type": "boolean",
+                        "description": "When filtering by subtree, include descendant nodes (default true)",
+                    },
+                    "group_by": {
+                        "type": "string",
+                        "description": "Force summary grouping: topic | assignee | status",
+                    },
                     "limit": {"type": "integer"},
                 },
                 "required": ["workspace_id"],
@@ -73,19 +121,37 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
     registry.register(
         RegisteredTool(
             name="todo.update",
-            description="Update a TraceForge Todo",
+            description=(
+                "Update a TraceForge Todo. Locate with match_title / match_assignee_* / topic; "
+                "do not ask users for database ids. Patch title/status/assignee/priority/description."
+            ),
             schema={
                 "type": "object",
                 "properties": {
-                    "todo_id": {"type": "string"},
-                    "title": {"type": "string"},
+                    "todo_id": {
+                        "type": "string",
+                        "description": "Internal only if already known from a prior tool result _internal_id",
+                    },
+                    "match_title": {"type": "string"},
+                    "match_assignee_name": {"type": "string"},
+                    "match_assignee_email": {"type": "string"},
+                    "topic": {"type": "string"},
+                    "channel_name": {"type": "string"},
+                    "title": {"type": "string", "description": "New title"},
                     "description": {"type": "string"},
                     "status": {"type": "string"},
                     "priority": {"type": "integer"},
-                    "assignee_name": {"type": "string"},
-                    "assignee_email": {"type": "string"},
+                    "assignee_name": {"type": "string", "description": "New assignee name"},
+                    "assignee_email": {"type": "string", "description": "New assignee email"},
+                    "completed_at": {
+                        "type": "string",
+                        "description": (
+                            "ISO-8601 completion time when the user explicitly gave one. "
+                            "Omit to use the Zulip message send time."
+                        ),
+                    },
                 },
-                "required": ["todo_id"],
+                "required": [],
             },
             handler=lambda arguments: _update_todo(workflow, arguments),
         )
@@ -93,11 +159,24 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
     registry.register(
         RegisteredTool(
             name="todo.delete",
-            description="Delete a TraceForge Todo",
+            description=(
+                "Delete a TraceForge Todo. Locate with match_title / match_assignee_* / topic; "
+                "do not ask users for database ids. Soft-deletes the matched record."
+            ),
             schema={
                 "type": "object",
-                "properties": {"todo_id": {"type": "string"}},
-                "required": ["todo_id"],
+                "properties": {
+                    "todo_id": {
+                        "type": "string",
+                        "description": "Internal only if already known from a prior tool result _internal_id",
+                    },
+                    "match_title": {"type": "string"},
+                    "match_assignee_name": {"type": "string"},
+                    "match_assignee_email": {"type": "string"},
+                    "topic": {"type": "string"},
+                    "channel_name": {"type": "string"},
+                },
+                "required": [],
             },
             handler=lambda arguments: _delete_todo(workflow, arguments),
         )
@@ -119,6 +198,65 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
             handler=lambda arguments: _summary_todos(workflow, arguments),
         )
     )
+    registry.register(
+        RegisteredTool(
+            name="subtree.children",
+            description=(
+                "List child org-subtrees under a parent node (or L1 roots if parent omitted). "
+                "Use for questions like: 硬件下面有哪些子组织树. "
+                "Default lists direct children; set include_descendants=true for full subtree."
+            ),
+            schema={
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "subtree_id": {"type": "string"},
+                    "subtree_code": {"type": "string"},
+                    "subtree_name": {"type": "string"},
+                    "subtree_path": {"type": "string"},
+                    "include_descendants": {
+                        "type": "boolean",
+                        "description": "false=direct children only (default); true=all descendants",
+                    },
+                },
+                "required": ["workspace_id"],
+            },
+            handler=lambda arguments: _subtree_children(workflow, arguments),
+        )
+    )
+    registry.register(
+        RegisteredTool(
+            name="subtree.todos",
+            description=(
+                "List Todos hanging on a subtree. Stream/Topic chat defaults to current Topic; "
+                "private chat is unrestricted unless topic is provided. "
+                "Descendants included by default."
+            ),
+            schema={
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string"},
+                    "subtree_id": {"type": "string"},
+                    "subtree_code": {"type": "string"},
+                    "subtree_name": {"type": "string"},
+                    "subtree_path": {"type": "string"},
+                    "topic": {"type": "string"},
+                    "status": {"type": "string"},
+                    "include_descendants": {"type": "boolean"},
+                    "include_description": {"type": "boolean"},
+                },
+                "required": ["workspace_id"],
+                "anyOf": [
+                    {"required": ["subtree_name"]},
+                    {"required": ["subtree_code"]},
+                    {"required": ["subtree_path"]},
+                    {"required": ["subtree_id"]},
+                ],
+            },
+            handler=lambda arguments: _subtree_todos(workflow, arguments),
+        )
+    )
+
 
 
 def _create_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult:
@@ -132,6 +270,10 @@ def _create_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
         assignee_email=arguments.get("assignee_email"),
         topic=arguments.get("topic"),
         priority=int(arguments.get("priority") or 0),
+        subtree_id=arguments.get("subtree_id"),
+        subtree_code=arguments.get("subtree_code"),
+        subtree_name=arguments.get("subtree_name"),
+        subtree_path=arguments.get("subtree_path"),
     )
     result = workflow.handle(event, command)
     return ToolResult(
@@ -146,12 +288,26 @@ def _create_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
 def _list_todos(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult:
     event = _event_from_tool(arguments)
     status = _parse_status(arguments.get("status"))
+    priority_raw = arguments.get("priority")
+    include_description = _parse_bool(arguments.get("include_description"))
     command = TodoCommand(
         action=TodoAction.LIST,
         raw_text=str(arguments),
         status=status,
         assignee_email=arguments.get("assignee_email"),
+        assignee_name=arguments.get("assignee_name"),
+        proposer_email=arguments.get("proposer_email"),
+        proposer_name=arguments.get("proposer_name"),
         topic=arguments.get("topic"),
+        channel_name=arguments.get("channel_name"),
+        priority=int(priority_raw) if priority_raw is not None else 0,
+        title_contains=arguments.get("title_contains"),
+        group_by=arguments.get("group_by"),
+        include_description=include_description,
+        subtree_code=arguments.get("subtree_code"),
+        subtree_name=arguments.get("subtree_name"),
+        subtree_path=arguments.get("subtree_path"),
+        include_descendants=_parse_bool(arguments.get("include_descendants"), default=True),
     )
     result = workflow.handle(event, command)
     return ToolResult(
@@ -160,6 +316,14 @@ def _list_todos(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult
         data={
             "reply_text": result.reply_text,
             "todos": [item.to_dict() for item in result.todos],
+            "display_mode": next(
+                (
+                    evidence.get("mode")
+                    for evidence in result.evidence
+                    if isinstance(evidence, dict) and evidence.get("type") == "todo.list"
+                ),
+                None,
+            ),
         },
         evidence=result.evidence,
     )
@@ -169,14 +333,20 @@ def _update_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
     event = _event_from_tool(arguments)
     command = TodoCommand(
         action=TodoAction.UPDATE,
-        raw_text=str(arguments),
-        todo_id=str(arguments.get("todo_id") or ""),
+        raw_text=str(arguments.get("raw_text") or arguments),
+        todo_id=str(arguments.get("todo_id") or "") or None,
+        match_title=arguments.get("match_title"),
+        match_assignee_name=arguments.get("match_assignee_name"),
+        match_assignee_email=arguments.get("match_assignee_email"),
         title=arguments.get("title"),
         description=arguments.get("description"),
         status=_parse_status(arguments.get("status")),
         priority=int(arguments["priority"]) if arguments.get("priority") is not None else 0,
         assignee_name=arguments.get("assignee_name"),
         assignee_email=arguments.get("assignee_email"),
+        topic=arguments.get("topic"),
+        channel_name=arguments.get("channel_name"),
+        completed_at=_parse_optional_time(arguments.get("completed_at")),
     )
     result = workflow.handle(event, command)
     return ToolResult(
@@ -192,8 +362,14 @@ def _delete_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
     event = _event_from_tool(arguments)
     command = TodoCommand(
         action=TodoAction.DELETE,
-        raw_text=str(arguments),
-        todo_id=str(arguments.get("todo_id") or ""),
+        raw_text=str(arguments.get("raw_text") or arguments),
+        todo_id=str(arguments.get("todo_id") or "") or None,
+        match_title=arguments.get("match_title"),
+        match_assignee_name=arguments.get("match_assignee_name"),
+        match_assignee_email=arguments.get("match_assignee_email"),
+        topic=arguments.get("topic"),
+        channel_name=arguments.get("channel_name"),
+        title_contains=arguments.get("match_title"),
     )
     result = workflow.handle(event, command)
     return ToolResult(
@@ -227,12 +403,26 @@ def _event_from_tool(arguments: dict[str, Any]) -> WorkspaceEvent:
     workspace_id = str(arguments.get("workspace_id") or "default")
     channel_name = arguments.get("channel_name")
     topic = arguments.get("topic")
+    message_type = arguments.get("message_type")
+    raw = arguments.get("raw")
+    payload: dict[str, Any] = {
+        "text": str(
+            arguments.get("raw_text")
+            or arguments.get("description")
+            or arguments.get("title")
+            or ""
+        ),
+    }
+    if message_type:
+        payload["message_type"] = message_type
+    if isinstance(raw, dict):
+        payload["raw"] = raw
     return WorkspaceEvent(
         source=_source_from(arguments),
         kind=_kind_from(arguments),
         actor=_actor_from(arguments),
         location=_location_from(arguments, workspace_id=workspace_id, channel_name=channel_name, topic=topic),
-        payload={"text": str(arguments.get("raw_text") or arguments.get("description") or arguments.get("title") or "")},
+        payload=payload,
         external_event_id=arguments.get("external_event_id"),
         occurred_at=_parse_time(arguments.get("occurred_at")),
     )
@@ -291,7 +481,82 @@ def _parse_status(value: Any) -> TodoStatus | None:
         return None
 
 
-def _parse_time(value: Any) -> datetime:
-    if isinstance(value, datetime):
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
         return value
-    return datetime.now(timezone.utc)
+    if value is None or value == "":
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "是"}
+
+
+def _parse_time(value: Any) -> datetime:
+    parsed = _parse_optional_time(value)
+    return parsed if parsed is not None else datetime.now(timezone.utc)
+
+
+def _parse_optional_time(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        text = str(value).strip()
+        if text.isdigit():
+            return datetime.fromtimestamp(float(text), tz=timezone.utc)
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
+def _subtree_children(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult:
+    event = _event_from_tool(arguments)
+    command = TodoCommand(
+        action=TodoAction.SUBTREE_CHILDREN,
+        raw_text=str(arguments),
+        subtree_id=arguments.get("subtree_id"),
+        subtree_code=arguments.get("subtree_code"),
+        subtree_name=arguments.get("subtree_name"),
+        subtree_path=arguments.get("subtree_path"),
+        include_descendants=_parse_bool(arguments.get("include_descendants"), default=False),
+    )
+    result = workflow.handle(event, command)
+    return ToolResult(
+        tool_name="subtree.children",
+        ok=True,
+        data={"reply_text": result.reply_text},
+        evidence=result.evidence,
+    )
+
+
+def _subtree_todos(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult:
+    event = _event_from_tool(arguments)
+    command = TodoCommand(
+        action=TodoAction.SUBTREE_TODOS,
+        raw_text=str(arguments),
+        subtree_id=arguments.get("subtree_id"),
+        subtree_code=arguments.get("subtree_code"),
+        subtree_name=arguments.get("subtree_name"),
+        subtree_path=arguments.get("subtree_path"),
+        topic=arguments.get("topic"),
+        status=_parse_status(arguments.get("status")),
+        include_descendants=_parse_bool(arguments.get("include_descendants"), default=True),
+        include_description=_parse_bool(arguments.get("include_description"), default=False),
+    )
+    result = workflow.handle(event, command)
+    return ToolResult(
+        tool_name="subtree.todos",
+        ok=True,
+        data={
+            "reply_text": result.reply_text,
+            "todos": [item.to_dict() for item in result.todos],
+        },
+        evidence=result.evidence,
+    )
+

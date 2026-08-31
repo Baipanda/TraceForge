@@ -19,10 +19,29 @@
 | TraceForge Zulip RabbitMQ | `traceforge-zulip-rabbitmq` | internal |
 | TraceForge Zulip Redis | `traceforge-zulip-redis` | internal |
 
-Zulip bridge 当前不作为 Docker 容器运行。当前推荐方式是在项目目录中以本机进程启动：
+Zulip bridge 当前不作为 Docker 容器运行。推荐用 systemd user 服务持久运行（崩溃自动重启，登录退出后仍存活）：
 
 ```bash
-python scripts/run_zulip_bridge.py
+# 安装 / 更新 unit（仓库内模板）
+cp deploy/systemd/traceforge-zulip-bridge.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now traceforge-zulip-bridge.service
+
+# 开机后无需登录也能跑（只需做一次）
+loginctl enable-linger "$USER"
+
+# 常用运维
+systemctl --user status traceforge-zulip-bridge.service
+systemctl --user restart traceforge-zulip-bridge.service
+journalctl --user -u traceforge-zulip-bridge.service -f
+# 或看文件日志：
+tail -f .traceforge/logs/zulip-bridge.log
+```
+
+临时前台调试仍可用：
+
+```bash
+PYTHONPATH=src python scripts/run_zulip_bridge.py
 ```
 
 ## 验证结果

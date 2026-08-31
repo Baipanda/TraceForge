@@ -63,4 +63,5 @@ def _actor_to_dict(actor: ActorRef) -> dict[str, str | None]:
         "external_id": actor.external_id,
         "display_name": actor.display_name,
         "email": actor.email,
+        "person_id": actor.person_id,
     }

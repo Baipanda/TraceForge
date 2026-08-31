@@ -9,7 +9,7 @@ Agent 只使用逻辑工具名，不关心工具的具体实现来源。
 
 ## 当前已落地的工具
 
-- `people.resolve`
+- `people.resolve`（按 person_id / 姓名 / 邮箱 / Zulip external_id 解析 Workspace Person）
 - `todo.create`
 - `todo.list`
 - `todo.update`

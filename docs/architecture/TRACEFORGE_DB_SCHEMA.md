@@ -10,7 +10,8 @@
 
 - `title`: 标题
 - `proposer_name` 或 `proposer_email`: 发布者，来自 Zulip 消息发送人
-- `assignee_name` 或 `assignee_email`: 执行者，来自用户指令或 `workspace/people.json` 身份解析
+- `assignee_name` 或 `assignee_email`: 执行者，来自 Workspace `persons` / `person_bindings` 身份解析
+- 发言人身份：`WorkspaceEvent.actor.person_id`（normalize 时按 Zulip `sender_id` 映射）
 
 其余字段由 TraceForge 默认填充或允许为空。
 

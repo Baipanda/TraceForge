@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from traceforge.infrastructure.identity.people_directory import IdentityRecord, PeopleDirectory
+from traceforge.infrastructure.identity.person_store import PersonRecord, PersonStore
 from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 
 
-def register_people_tools(registry: ToolRegistry, people_directory: PeopleDirectory) -> None:
+def register_people_tools(registry: ToolRegistry, person_store: PersonStore) -> None:
     registry.register(
         RegisteredTool(
             name="people.resolve",
-            description="Resolve a person by name, email, Zulip username, or alias",
+            description="Resolve a workspace person by person_id, display name, email, or Zulip external_id",
             schema={
                 "type": "object",
                 "properties": {
@@ -19,14 +19,14 @@ def register_people_tools(registry: ToolRegistry, people_directory: PeopleDirect
                 },
                 "required": ["query"],
             },
-            handler=lambda arguments: _resolve_person(people_directory, arguments),
+            handler=lambda arguments: _resolve_person(person_store, arguments),
         )
     )
 
 
-def _resolve_person(people_directory: PeopleDirectory, arguments: dict[str, Any]) -> ToolResult:
+def _resolve_person(person_store: PersonStore, arguments: dict[str, Any]) -> ToolResult:
     query = str(arguments.get("query") or "")
-    record = people_directory.resolve(query)
+    record = person_store.resolve(query)
     if record is None:
         return ToolResult(
             tool_name="people.resolve",
@@ -39,4 +39,3 @@ def _resolve_person(people_directory: PeopleDirectory, arguments: dict[str, Any]
         ok=True,
         data={"query": query, "person": record.to_dict()},
     )
-

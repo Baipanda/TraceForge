@@ -60,6 +60,7 @@ class TraceForgeSettings:
     agent_max_tool_calls: int = 12
     memory_enabled: bool = True
     memory_search_limit: int = 8
+    session_keep_recent_tokens: int = 20_000
 
     @property
     def llm_enabled(self) -> bool:
@@ -95,4 +96,7 @@ def get_settings() -> TraceForgeSettings:
         agent_max_tool_calls=int(os.environ.get("TRACEFORGE_AGENT_MAX_TOOL_CALLS", "12")),
         memory_enabled=env_bool("TRACEFORGE_MEMORY_ENABLED", True),
         memory_search_limit=int(os.environ.get("TRACEFORGE_MEMORY_SEARCH_LIMIT", "8")),
+        session_keep_recent_tokens=int(
+            os.environ.get("TRACEFORGE_SESSION_KEEP_RECENT_TOKENS", "20000")
+        ),
     )

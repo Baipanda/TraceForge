@@ -6,7 +6,7 @@ from typing import Any
 from traceforge.agent.models import ContextItem, GatewayResponse
 from traceforge.context.models import ZulipConversationContext
 from traceforge.core.events import WorkspaceEvent
-from traceforge.infrastructure.identity.people_directory import PeopleDirectory
+from traceforge.infrastructure.identity.person_store import PersonStore
 from traceforge.memory.models import (
     MemoryEntry,
     MemoryKind,
@@ -34,11 +34,11 @@ class MemoryService:
         self,
         repository: SqliteMemoryRepository,
         *,
-        people_directory: PeopleDirectory | None = None,
+        person_store: PersonStore | None = None,
         search_limit: int = 8,
     ) -> None:
         self.repository = repository
-        self.people_directory = people_directory or PeopleDirectory()
+        self.person_store = person_store or PersonStore(repository.db_path)
         self.search_limit = search_limit
 
     def build_context(
@@ -205,23 +205,26 @@ class MemoryService:
             MemoryScopeRef(MemoryScope.SESSION, session_key),
             MemoryScopeRef(MemoryScope.WORKSPACE, event.location.workspace_id),
         ]
+        if event.actor.person_id:
+            refs.append(MemoryScopeRef(MemoryScope.ACTOR, event.actor.person_id))
         if event.actor.email:
             refs.append(MemoryScopeRef(MemoryScope.ACTOR, event.actor.email))
         if event.actor.external_id:
             refs.append(MemoryScopeRef(MemoryScope.ACTOR, event.actor.external_id))
         if conversation:
             for participant in conversation.participants:
+                if participant.person_id:
+                    refs.append(MemoryScopeRef(MemoryScope.ACTOR, participant.person_id))
                 if participant.email:
                     refs.append(MemoryScopeRef(MemoryScope.ACTOR, participant.email))
                 elif participant.external_id:
                     refs.append(MemoryScopeRef(MemoryScope.ACTOR, participant.external_id))
             for mention in conversation.mentions:
-                record = self.people_directory.resolve(mention)
+                record = self.person_store.resolve(mention)
                 if record:
-                    if record.email:
-                        refs.append(MemoryScopeRef(MemoryScope.ACTOR, record.email))
-                    if record.database_username:
-                        refs.append(MemoryScopeRef(MemoryScope.ACTOR, record.database_username))
+                    refs.append(MemoryScopeRef(MemoryScope.ACTOR, record.person_id))
+                    if record.primary_email:
+                        refs.append(MemoryScopeRef(MemoryScope.ACTOR, record.primary_email))
         return _unique_scope_refs(refs)
 
     def _search_text(self, event: WorkspaceEvent, conversation: ZulipConversationContext | None) -> str:

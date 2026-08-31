@@ -35,6 +35,7 @@ _gateway = WorkspaceGateway(
     handler=_runtime,
     session_recorder=_processor.repository.record_session,
     memory_service=_memory_service if _settings.memory_enabled else None,
+    keep_recent_tokens=_settings.session_keep_recent_tokens,
 )
 
 

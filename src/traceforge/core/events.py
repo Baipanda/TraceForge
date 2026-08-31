@@ -28,6 +28,7 @@ class ActorRef:
     external_id: str
     display_name: str | None = None
     email: str | None = None
+    person_id: str | None = None
 
 
 @dataclass(frozen=True)

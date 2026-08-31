@@ -4,7 +4,7 @@ from traceforge.application.process_event import ProcessWorkspaceEvent
 from traceforge.application.todo_workflow import TodoWorkflow, parse_todo_command
 from traceforge.core.events import ActorRef, EventKind, EventSource, WorkspaceEvent, WorkspaceLocation
 from traceforge.core.todos import TodoAction, TodoFilter, TodoStatus
-from traceforge.infrastructure.identity.people_directory import PeopleDirectory
+from traceforge.infrastructure.identity.person_store import PersonStore
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
 
 
@@ -41,14 +41,17 @@ def test_parse_todo_command_trims_metadata_from_title() -> None:
     assert command.title == "todo 发布测试"
 
 
-def test_people_directory_resolves_neymar() -> None:
-    people = PeopleDirectory()
+def test_person_store_resolves_neymar(tmp_path) -> None:
+    people = PersonStore(tmp_path / "traceforge.sqlite3")
 
     record = people.resolve("Neymar")
 
     assert record is not None
-    assert record.email == "neymar@traceforge.local"
-    assert record.database_username == "neymar"
+    assert record.primary_email == "neymar@traceforge.local"
+    by_id = people.resolve("9")
+    assert by_id is not None
+    assert by_id.person_id == record.person_id
+
 
 
 def test_todo_repository_create_and_list(tmp_path) -> None:

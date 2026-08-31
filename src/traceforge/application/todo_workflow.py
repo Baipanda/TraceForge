@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from traceforge.core.events import WorkspaceEvent
-from traceforge.infrastructure.identity.people_directory import PeopleDirectory
+from traceforge.infrastructure.identity.person_store import PersonStore
 from traceforge.core.todos import TodoAction, TodoCommand, TodoFilter, TodoRecord, TodoStatus
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
 from traceforge.application.presentation import (
@@ -30,9 +30,9 @@ class TodoWorkflowResult:
 
 
 class TodoWorkflow:
-    def __init__(self, repository: SqliteTodoRepository, people_directory: PeopleDirectory | None = None) -> None:
+    def __init__(self, repository: SqliteTodoRepository, person_store: PersonStore | None = None) -> None:
         self.repository = repository
-        self.people_directory = people_directory or PeopleDirectory()
+        self.person_store = person_store or PersonStore(repository.db_path)
 
     def handle(self, event: WorkspaceEvent, command: TodoCommand) -> TodoWorkflowResult:
         if command.action == TodoAction.CREATE:
@@ -469,14 +469,14 @@ class TodoWorkflow:
 
     def _resolve_assignee(self, command: TodoCommand) -> tuple[str | None, str | None]:
         if command.assignee_email:
-            person = self.people_directory.resolve(command.assignee_email)
+            person = self.person_store.resolve(command.assignee_email)
             if person is not None:
-                return person.canonical_name, person.email
+                return person.display_name, person.primary_email
             return command.assignee_name, command.assignee_email
         if command.assignee_name:
-            person = self.people_directory.resolve(command.assignee_name)
+            person = self.person_store.resolve(command.assignee_name)
             if person is not None:
-                return person.canonical_name, person.email
+                return person.display_name, person.primary_email
         return command.assignee_name, command.assignee_email
 
 
@@ -659,7 +659,9 @@ def _extract_status(lowered: str) -> TodoStatus | None:
 
 
 def _extract_assignee(text: str) -> tuple[str | None, str | None]:
-    match = re.search(r"给\s*([^\s，。:：]+)", text)
+    match = re.search(r"给\s*(.+?)(?:发布|创建)", text)
+    if not match:
+        match = re.search(r"给\s*([^\s，。:：]+)", text)
     if not match:
         return None, None
     name = match.group(1).strip()

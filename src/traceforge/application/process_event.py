@@ -11,7 +11,7 @@ from traceforge.application.todo_workflow import TodoWorkflow, parse_todo_comman
 from traceforge.config import get_settings
 from traceforge.core.events import WorkspaceEvent
 from traceforge.core.todos import TodoAction
-from traceforge.infrastructure.identity.people_directory import PeopleDirectory
+from traceforge.infrastructure.identity.person_store import PersonStore
 from traceforge.infrastructure.llm.deepseek import DeepSeekClient
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
 from traceforge.tools.models import ToolCall, ToolResult
@@ -42,13 +42,13 @@ class ProcessWorkspaceEvent:
     ) -> None:
         settings = get_settings()
         db_path = Path(settings.traceforge_db_path)
-        self.people_directory = PeopleDirectory()
         self.repository = repository or SqliteTodoRepository(db_path)
-        self.todo_workflow = todo_workflow or TodoWorkflow(self.repository, people_directory=self.people_directory)
+        self.person_store = PersonStore(self.repository.db_path)
+        self.todo_workflow = todo_workflow or TodoWorkflow(self.repository, person_store=self.person_store)
         self.tool_registry = build_default_tool_registry(
             self.repository,
             workflow=self.todo_workflow,
-            people_directory=self.people_directory,
+            person_store=self.person_store,
         )
         self._settings = settings
 

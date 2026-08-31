@@ -6,7 +6,7 @@ from typing import Any
 from traceforge.application.todo_workflow import TodoWorkflow
 from traceforge.core.events import ActorRef, EventKind, EventSource, WorkspaceEvent, WorkspaceLocation
 from traceforge.core.todos import TodoAction, TodoCommand, TodoStatus
-from traceforge.infrastructure.identity.people_directory import PeopleDirectory
+from traceforge.infrastructure.identity.person_store import PersonStore
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
 from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
@@ -18,13 +18,13 @@ from traceforge.config import get_settings
 def build_default_tool_registry(
     repository: SqliteTodoRepository,
     workflow: TodoWorkflow | None = None,
-    people_directory: PeopleDirectory | None = None,
+    person_store: PersonStore | None = None,
 ) -> ToolRegistry:
-    workflow = workflow or TodoWorkflow(repository)
-    people_directory = people_directory or PeopleDirectory()
+    person_store = person_store or PersonStore(repository.db_path)
+    workflow = workflow or TodoWorkflow(repository, person_store=person_store)
     settings = get_settings()
     registry = ToolRegistry()
-    register_people_tools(registry, people_directory)
+    register_people_tools(registry, person_store)
     register_todo_tools(registry, workflow)
     register_zulip_tools(registry, repository, settings=settings)
     return registry

@@ -44,6 +44,7 @@ class PromptHarness:
             f"来源: {request.event.source.value}\n"
             f"类型: {request.event.kind.value}\n"
             f"会话: {request.session_key}\n"
+            f"发言人 person_id: {request.event.actor.person_id or 'unknown'}\n"
             f"频道: {request.event.location.channel_name or request.event.location.channel_id or 'unknown'}\n"
             f"Topic: {request.event.location.topic or 'none'}"
         )
@@ -60,14 +61,14 @@ class PromptHarness:
         context_message = "\n\n".join(
             f"[{item.source}]\n{item.content}" for item in items
         )
+        history = [dict(message) for message in request.session_messages]
+        current_user = {
+            "role": "user",
+            "content": f"{context_message}\n\n[用户消息]\n{request.text}",
+        }
         return PromptBundle(
             system_prompt=system_prompt,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"{context_message}\n\n[用户消息]\n{request.text}",
-                }
-            ],
+            messages=[*history, current_user],
             tools=tool_schemas or [],
             skills=[skill.name for skill in selected_skills],
             context_items=items,

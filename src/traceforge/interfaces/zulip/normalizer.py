@@ -12,14 +12,21 @@ from traceforge.core.events import (
     WorkspaceEvent,
     WorkspaceLocation,
 )
+from traceforge.infrastructure.identity.person_store import PROVIDER_ZULIP, PersonStore
 
 
-def normalize_zulip_payload(payload: dict[str, Any]) -> WorkspaceEvent:
+def normalize_zulip_payload(
+    payload: dict[str, Any],
+    *,
+    person_store: PersonStore | None = None,
+) -> WorkspaceEvent:
     """Normalize a Zulip-like payload into a WorkspaceEvent.
 
     The function accepts two shapes:
     1. raw Zulip event payload containing a `message` object;
     2. simplified smoke-test payload with top-level fields.
+
+    Workspace Person mapping runs here: actor.person_id is set from SQLite.
     """
 
     message = payload.get("message") if isinstance(payload.get("message"), dict) else payload
@@ -36,13 +43,22 @@ def normalize_zulip_payload(payload: dict[str, Any]) -> WorkspaceEvent:
     content = message.get("content") or payload.get("content") or payload.get("text") or ""
     message_id = message.get("id") or payload.get("message_id")
 
+    store = person_store or PersonStore()
+    person = store.resolve_or_create(
+        provider=PROVIDER_ZULIP,
+        external_id=sender_id,
+        email=sender_email or None,
+        display_name=str(sender_name) if sender_name else None,
+    )
+
     return WorkspaceEvent(
         source=EventSource.ZULIP,
         kind=EventKind.MESSAGE_CREATED,
         actor=ActorRef(
             external_id=sender_id,
-            display_name=str(sender_name) if sender_name else None,
-            email=sender_email or None,
+            display_name=str(sender_name) if sender_name else person.display_name,
+            email=sender_email or person.primary_email,
+            person_id=person.person_id,
         ),
         location=WorkspaceLocation(
             workspace_id=str(payload.get("workspace_id") or "default"),

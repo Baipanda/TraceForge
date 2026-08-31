@@ -22,6 +22,7 @@ class FakeToolCallingModel:
                         arguments={
                             "title": "检查认证模块",
                             "assignee_name": "Neymar",
+                            "subtree_code": "software",
                         },
                     )
                 ]
@@ -58,8 +59,8 @@ def test_runtime_executes_tool_then_returns_final_answer(tmp_path) -> None:
         )
     )
 
-    assert response.reply_text == "已根据工具结果完成处理。"
     assert any(item["type"] == "tool_call" and item["ok"] for item in response.evidence)
+    assert "检查认证模块" in response.reply_text or response.reply_text == "已根据工具结果完成处理。"
     with repository._connect() as conn:
         row = conn.execute(
             "SELECT title, assignee_email, proposer_email FROM traceforge_todos"

@@ -2,14 +2,17 @@ from traceforge.application.process_event import ProcessWorkspaceEvent
 from traceforge.core.events import ActorRef, EventKind, EventSource, WorkspaceEvent, WorkspaceLocation
 from traceforge.gateway.workspace_gateway import EventApplicationHandler, WorkspaceGateway
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
+from traceforge.session.transcript import JsonlSessionStore
 
 
 def test_gateway_builds_context_and_records_session(tmp_path) -> None:
     repository = SqliteTodoRepository(tmp_path / "traceforge.sqlite3")
     processor = ProcessWorkspaceEvent(repository=repository)
+    session_store = JsonlSessionStore(tmp_path / "sessions")
     gateway = WorkspaceGateway(
         handler=EventApplicationHandler(processor),
         session_recorder=repository.record_session,
+        session_store=session_store,
     )
     event = WorkspaceEvent(
         source=EventSource.ZULIP,
@@ -42,3 +45,9 @@ def test_gateway_builds_context_and_records_session(tmp_path) -> None:
         ).fetchone()
     assert row is not None
     assert row["session_key"] == context_evidence["session_key"]
+
+    transcript = session_store.load_events(context_evidence["session_key"])
+    assert transcript[0].type == "user"
+    assert transcript[0].content == "列出 todo"
+    assert transcript[-1].type == "assistant"
+    assert transcript[-1].content == response.reply_text

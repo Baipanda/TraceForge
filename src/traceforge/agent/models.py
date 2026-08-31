@@ -31,6 +31,7 @@ class AgentRequest:
 
     event: WorkspaceEvent
     session_key: str
+    session_messages: tuple[dict[str, Any], ...] = ()
     request_id: str = field(default_factory=lambda: str(uuid4()))
     metadata: dict[str, Any] = field(default_factory=dict)
 

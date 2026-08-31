@@ -8,6 +8,8 @@ services:
       - ../.env
     environment:
       TRACEFORGE_DB_PATH: /data/traceforge.sqlite3
+      # Docker: connect via host gateway; Host header stays 127.0.0.1:18443 (Zulip EXTERNAL_HOST).
+      TRACEFORGE_ZULIP_API_CONNECT_URL: https://172.18.0.1:18443
     ports:
       - "${TRACEFORGE_PORT:-19090}:8090"
     volumes:

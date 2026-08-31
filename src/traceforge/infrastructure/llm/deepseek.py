@@ -80,23 +80,42 @@ class DeepSeekClient:
             tool_calls=_extract_tool_calls(message),
         )
 
-    def chat(self, messages: list[dict[str, str]]) -> LLMReply:
-        payload = self._request(messages)
+    def chat(self, messages: list[dict[str, str]], *, max_tokens: int = 600) -> LLMReply:
+        payload = self._request(messages, max_tokens=max_tokens)
         content = _extract_content(payload)
         return LLMReply(content=content, model=self._model)
+
+    def complete_json(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 2000,
+    ) -> str:
+        payload = self._request(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.1,
+        )
+        return _extract_content(payload)
 
     def _request(
         self,
         messages: list[dict[str, object]],
         *,
         tools: list[dict[str, object]] | None = None,
+        max_tokens: int = 600,
+        temperature: float = 0.2,
     ) -> dict[str, Any]:
         body = {
             "model": self._model,
             "messages": messages,
             "thinking": {"type": "disabled"},
-            "temperature": 0.2,
-            "max_tokens": 600,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
         if tools:
             body["tools"] = [

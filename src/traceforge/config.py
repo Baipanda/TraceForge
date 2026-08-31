@@ -53,6 +53,7 @@ class TraceForgeSettings:
     zulip_bot_name: str
     zulip_verify_ssl: bool
     zulip_poll_interval_seconds: float
+    zulip_api_connect_url: str | None = None
     zulip_progress_enabled: bool = True
     zulip_reactions_enabled: bool = True
     agent_max_model_turns: int = 8
@@ -77,6 +78,8 @@ def get_settings() -> TraceForgeSettings:
             str(Path(__file__).resolve().parents[2] / ".traceforge" / "traceforge.sqlite3"),
         ),
         zulip_url=first_env("TRACEFORGE_ZULIP_URL", "ZULIP_URL", default="https://127.0.0.1:18443"),
+        zulip_api_connect_url=first_env("TRACEFORGE_ZULIP_API_CONNECT_URL", "ZULIP_API_CONNECT_URL")
+        or None,
         zulip_email=first_env(
             "TRACEFORGE_ZULIP_EMAIL", "ZULIP_EMAIL", default="Jarvis-bot@traceforge.local"
         ),

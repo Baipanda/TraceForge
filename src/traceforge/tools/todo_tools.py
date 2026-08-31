@@ -11,6 +11,8 @@ from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoReposi
 from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 from traceforge.tools.people_tools import register_people_tools
+from traceforge.tools.zulip_tools import register_zulip_tools
+from traceforge.config import get_settings
 
 
 def build_default_tool_registry(
@@ -20,9 +22,11 @@ def build_default_tool_registry(
 ) -> ToolRegistry:
     workflow = workflow or TodoWorkflow(repository)
     people_directory = people_directory or PeopleDirectory()
+    settings = get_settings()
     registry = ToolRegistry()
     register_people_tools(registry, people_directory)
     register_todo_tools(registry, workflow)
+    register_zulip_tools(registry, repository, settings=settings)
     return registry
 
 

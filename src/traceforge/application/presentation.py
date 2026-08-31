@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from collections import Counter
 from datetime import datetime
-from typing import Iterable
+from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
 from traceforge.core.subtrees import SubtreeRecord
@@ -264,6 +264,106 @@ def format_todo_update_reply(todo: TodoRecord, *, changed: dict[str, object] | N
 
 def format_todo_delete_reply(todo: TodoRecord) -> str:
     return format_todo_list_detail([todo], filters={}, header="已删除 Todo", max_items=1)
+
+
+def _bullet_section(title: str, items: tuple[str, ...] | list[str]) -> str:
+    if not items:
+        return f"### {title}\n\n—"
+    lines = [f"### {title}", ""]
+    for item in items:
+        lines.append(f"- {item}")
+    return "\n".join(lines)
+
+
+def format_topic_digest_reply(
+    *,
+    stream: str,
+    topic: str,
+    message_count: int,
+    todos: list[TodoRecord],
+    digest: Any,
+    truncated: bool = False,
+) -> str:
+    """Render LLM TopicDigest into a fixed Markdown panel."""
+    header = f"Topic 摘要（#{stream} / {topic}）"
+    meta = f"消息 {message_count} 条 · 本 Topic Todo {len(todos)} 条"
+    if truncated:
+        meta += " · 语料已截断（保留最近部分）"
+
+    parts = [header, meta, ""]
+
+    background = str(getattr(digest, "background", "") or "").strip()
+    parts.append(f"### 背景\n\n{background or '—'}")
+    parts.append("")
+    parts.append(_bullet_section("已确认事实", getattr(digest, "confirmed_facts", ())))
+    parts.append("")
+    parts.append(_bullet_section("决策 / 结论", getattr(digest, "decisions", ())))
+    parts.append("")
+    parts.append(_bullet_section("未决问题", getattr(digest, "open_questions", ())))
+    parts.append("")
+    parts.append(_bullet_section("风险 / 阻塞", getattr(digest, "risks", ())))
+
+    by_status = Counter(todo.status.value for todo in todos)
+    status_bits = " / ".join(f"{name} {count}" for name, count in by_status.most_common())
+    parts.extend(["", "### 行动项", ""])
+    parts.append(f"**已有 Todo**：{status_bits or '无'}")
+    suggested = getattr(digest, "suggested_actions", ())
+    if suggested:
+        parts.append("**讨论中建议**（未自动创建）：")
+        for item in suggested:
+            parts.append(f"- {item}")
+    elif todos:
+        openish = [t for t in todos if t.status.value in {"open", "in_progress"}]
+        if openish:
+            parts.append("**未完成 Todo**：")
+            for todo in openish[:8]:
+                assignee = todo.assignee_name or todo.assignee_email or "未指定"
+                parts.append(f"- {todo.title}（{todo.status.value} · {assignee}）")
+
+    quotes = getattr(digest, "key_quotes", ())
+    if quotes:
+        parts.append("")
+        rows = [[_cell(q[0]), _cell(q[1]), _cell(q[2])] for q in quotes[:8]]
+        parts.append(
+            _markdown_table(
+                title="关键发言（节选）",
+                headers=["时间", "发言人", "摘录"],
+                rows=rows,
+            )
+        )
+    return "\n".join(parts)
+
+
+def format_topic_summary_fallback_reply(
+    *,
+    stream: str,
+    topic: str,
+    message_count: int,
+    todos: list[TodoRecord],
+    reason: str,
+) -> str:
+    header = f"Topic 摘要（#{stream} / {topic}）"
+    parts = [
+        header,
+        f"消息 {message_count} 条 · 本 Topic Todo {len(todos)} 条",
+        "",
+        f"无法生成结构化摘要：{reason}",
+        "",
+        "请确认已配置 DEEPSEEK_API_KEY，或稍后重试。",
+    ]
+    if todos:
+        parts.append("")
+        by_status = Counter(todo.status.value for todo in todos)
+        rows = [[_cell(name), _cell(count)] for name, count in by_status.most_common()]
+        parts.append(
+            _markdown_table(
+                title="本 Topic Todo 状态",
+                headers=["状态", "数量"],
+                rows=rows,
+                count_label=f"共 {len(todos)} 条",
+            )
+        )
+    return "\n".join(parts)
 
 
 def format_subtree_path_label(node: SubtreeRecord, labels: dict[str, str] | None = None) -> str:

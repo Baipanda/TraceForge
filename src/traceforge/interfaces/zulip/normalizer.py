@@ -51,7 +51,7 @@ def normalize_zulip_payload(payload: dict[str, Any]) -> WorkspaceEvent:
             topic=str(topic) if topic else None,
         ),
         payload={
-            "text": _strip_zulip_markup(str(content)),
+            "text": strip_zulip_markup(str(content)),
             "raw": payload,
         },
         external_event_id=str(payload.get("id") or message_id) if (payload.get("id") or message_id) else None,
@@ -83,8 +83,11 @@ def _parse_zulip_timestamp(value: Any) -> datetime:
         return datetime.now(timezone.utc)
 
 
-def _strip_zulip_markup(text: str) -> str:
+def strip_zulip_markup(text: str) -> str:
     text = html.unescape(text)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+_strip_zulip_markup = strip_zulip_markup

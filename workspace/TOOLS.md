@@ -10,6 +10,9 @@ Agent 只使用逻辑工具名，不关心工具的具体实现来源。
 ## 当前已落地的工具
 
 - `people.resolve`（按 person_id / 姓名 / 邮箱 / Zulip external_id 解析 Workspace Person）
+- `memory.search`（搜索 Markdown 记忆索引：daily / decision / core / preference）
+- `memory.get`（按路径读取记忆文件）
+- `memory.remember`（写入当前用户 preference：以后/之后/记住…）
 - `todo.create`
 - `todo.list`
 - `todo.update`

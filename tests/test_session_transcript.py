@@ -42,12 +42,30 @@ def test_build_session_messages_keeps_recent_token_budget() -> None:
         SessionEvent(type="user", content="最新用户"),
         SessionEvent(type="assistant", content="最新助手"),
     ]
-    # Tiny budget should keep only the newest tail.
     messages = build_session_messages(events, keep_recent_tokens=estimate_tokens("最新助手") + 1)
 
     assert messages[-1]["role"] == "assistant"
     assert messages[-1]["content"] == "最新助手"
     assert len(messages) <= 2
+
+
+def test_tool_events_project_as_user_context_not_raw_tool_role() -> None:
+    messages = build_session_messages(
+        [
+            SessionEvent(type="user", content="查记忆"),
+            SessionEvent(
+                type="tool",
+                content='{"tool_name":"memory.search","ok":true}',
+                name="memory.search",
+                call_id="call-1",
+                ok=True,
+            ),
+            SessionEvent(type="assistant", content="找到了"),
+        ]
+    )
+    assert messages[1]["role"] == "user"
+    assert "memory.search" in messages[1]["content"]
+    assert all(message["role"] != "tool" for message in messages)
 
 
 def test_harness_prefixes_session_history() -> None:

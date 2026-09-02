@@ -14,18 +14,14 @@ from traceforge.application.process_event import ProcessWorkspaceEvent
 from traceforge.config import get_settings
 from traceforge.gateway.workspace_gateway import WorkspaceGateway
 from traceforge.infrastructure.llm.deepseek import DeepSeekClient
-from traceforge.infrastructure.storage.memory_repository import SqliteMemoryRepository
-from traceforge.memory.service import MemoryService
 from traceforge.interfaces.zulip.normalizer import normalize_zulip_payload
 
 
 _processor = ProcessWorkspaceEvent()
 _settings = get_settings()
-_memory_repository = SqliteMemoryRepository(_settings.traceforge_db_path)
-_memory_service = MemoryService(_memory_repository, search_limit=_settings.memory_search_limit)
 _model = DeepSeekClient(_settings) if _settings.llm_enabled else None
 _runtime = AgentRuntime(
-    harness=PromptHarness(),
+    harness=PromptHarness(memory_store=_processor.memory_store),
     tool_registry=_processor.tool_registry,
     model=_model,
     max_model_turns=_settings.agent_max_model_turns,
@@ -34,7 +30,9 @@ _runtime = AgentRuntime(
 _gateway = WorkspaceGateway(
     handler=_runtime,
     session_recorder=_processor.repository.record_session,
-    memory_service=_memory_service if _settings.memory_enabled else None,
+    memory_store=_processor.memory_store,
+    memory_index=_processor.memory_index,
+    session_summarizer=_model,
     keep_recent_tokens=_settings.session_keep_recent_tokens,
 )
 

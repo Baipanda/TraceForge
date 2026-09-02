@@ -8,7 +8,6 @@ from traceforge.agent.harness import PromptHarness
 from traceforge.agent.models import (
     AgentRequest,
     AgentRun,
-    ContextItem,
     GatewayResponse,
     ModelTurn,
     ModelToolCall,
@@ -62,7 +61,6 @@ class AgentRuntime:
         model_tool_schemas, tool_name_map = _model_tool_schemas(tool_schemas)
         bundle = self.harness.build(
             request,
-            context_items=_context_items_from_metadata(request.metadata.get("memory_context_items")),
             tool_schemas=model_tool_schemas,
         )
         messages = list(bundle.messages)
@@ -421,20 +419,3 @@ def _preferred_user_reply(results: list[ToolResult]) -> str | None:
 
 def _tool_call_fingerprint(name: str, arguments: dict[str, object]) -> str:
     return f"{name}:{json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)}"
-
-
-def _context_items_from_metadata(value: object) -> list[ContextItem] | None:
-    if not isinstance(value, list):
-        return None
-    items: list[ContextItem] = []
-    for item in value:
-        if isinstance(item, ContextItem):
-            items.append(item)
-        elif isinstance(item, dict):
-            source = str(item.get("source") or "memory")
-            content = str(item.get("content") or "")
-            metadata = item.get("metadata")
-            if not isinstance(metadata, dict):
-                metadata = {}
-            items.append(ContextItem(source=source, content=content, metadata=metadata))
-    return items or None

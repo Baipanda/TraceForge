@@ -8,9 +8,13 @@ from traceforge.core.events import ActorRef, EventKind, EventSource, WorkspaceEv
 from traceforge.core.todos import TodoAction, TodoCommand, TodoStatus
 from traceforge.infrastructure.identity.person_store import PersonStore
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
+from traceforge.memory.event_writer import MemoryEventWriter
+from traceforge.memory.markdown_index import MarkdownMemoryIndex
+from traceforge.memory.markdown_store import MarkdownMemoryStore
 from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 from traceforge.tools.people_tools import register_people_tools
+from traceforge.tools.memory_tools import register_memory_tools
 from traceforge.tools.zulip_tools import register_zulip_tools
 from traceforge.config import get_settings
 
@@ -19,18 +23,28 @@ def build_default_tool_registry(
     repository: SqliteTodoRepository,
     workflow: TodoWorkflow | None = None,
     person_store: PersonStore | None = None,
+    memory_index: MarkdownMemoryIndex | None = None,
 ) -> ToolRegistry:
     person_store = person_store or PersonStore(repository.db_path)
     workflow = workflow or TodoWorkflow(repository, person_store=person_store)
     settings = get_settings()
+    memory_store = memory_index.store if memory_index is not None else MarkdownMemoryStore()
+    memory_index = memory_index or MarkdownMemoryIndex(repository.db_path, memory_store)
     registry = ToolRegistry()
     register_people_tools(registry, person_store)
-    register_todo_tools(registry, workflow)
-    register_zulip_tools(registry, repository, settings=settings)
+    register_memory_tools(registry, index=memory_index)
+    register_todo_tools(registry, workflow, memory_index=memory_index)
+    register_zulip_tools(registry, repository, settings=settings, memory_index=memory_index)
     return registry
 
 
-def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
+def register_todo_tools(
+    registry: ToolRegistry,
+    workflow: TodoWorkflow,
+    *,
+    memory_index: MarkdownMemoryIndex | None = None,
+) -> None:
+    writer = MemoryEventWriter(memory_index.store, memory_index) if memory_index is not None else None
     registry.register(
         RegisteredTool(
             name="todo.create",
@@ -75,7 +89,7 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
                     {"required": ["assignee_email"]},
                 ],
             },
-            handler=lambda arguments: _create_todo(workflow, arguments),
+            handler=lambda arguments: _create_todo(workflow, arguments, writer=writer),
         )
     )
     registry.register(
@@ -157,7 +171,7 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
                 },
                 "required": [],
             },
-            handler=lambda arguments: _update_todo(workflow, arguments),
+            handler=lambda arguments: _update_todo(workflow, arguments, writer=writer),
         )
     )
     registry.register(
@@ -182,7 +196,7 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
                 },
                 "required": [],
             },
-            handler=lambda arguments: _delete_todo(workflow, arguments),
+            handler=lambda arguments: _delete_todo(workflow, arguments, writer=writer),
         )
     )
     registry.register(
@@ -263,7 +277,12 @@ def register_todo_tools(registry: ToolRegistry, workflow: TodoWorkflow) -> None:
 
 
 
-def _create_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult:
+def _create_todo(
+    workflow: TodoWorkflow,
+    arguments: dict[str, Any],
+    *,
+    writer: MemoryEventWriter | None = None,
+) -> ToolResult:
     event = _event_from_tool(arguments)
     command = TodoCommand(
         action=TodoAction.CREATE,
@@ -280,6 +299,8 @@ def _create_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
         subtree_path=arguments.get("subtree_path"),
     )
     result = workflow.handle(event, command)
+    if writer is not None and result.todo is not None:
+        writer.record_todo_change(action="create", todo=result.todo, topic=result.todo.topic)
     return ToolResult(
         tool_name="todo.create",
         ok=result.todo is not None,
@@ -333,7 +354,12 @@ def _list_todos(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult
     )
 
 
-def _update_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult:
+def _update_todo(
+    workflow: TodoWorkflow,
+    arguments: dict[str, Any],
+    *,
+    writer: MemoryEventWriter | None = None,
+) -> ToolResult:
     event = _event_from_tool(arguments)
     command = TodoCommand(
         action=TodoAction.UPDATE,
@@ -353,6 +379,8 @@ def _update_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
         completed_at=_parse_optional_time(arguments.get("completed_at")),
     )
     result = workflow.handle(event, command)
+    if writer is not None and result.todo is not None:
+        writer.record_todo_change(action="update", todo=result.todo, topic=result.todo.topic)
     return ToolResult(
         tool_name="todo.update",
         ok=result.todo is not None,
@@ -362,7 +390,12 @@ def _update_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
     )
 
 
-def _delete_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResult:
+def _delete_todo(
+    workflow: TodoWorkflow,
+    arguments: dict[str, Any],
+    *,
+    writer: MemoryEventWriter | None = None,
+) -> ToolResult:
     event = _event_from_tool(arguments)
     command = TodoCommand(
         action=TodoAction.DELETE,
@@ -376,6 +409,8 @@ def _delete_todo(workflow: TodoWorkflow, arguments: dict[str, Any]) -> ToolResul
         title_contains=arguments.get("match_title"),
     )
     result = workflow.handle(event, command)
+    if writer is not None and result.todo is not None:
+        writer.record_todo_change(action="delete", todo=result.todo, topic=result.todo.topic)
     return ToolResult(
         tool_name="todo.delete",
         ok=result.todo is not None,

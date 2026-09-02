@@ -703,6 +703,8 @@ class SqliteTodoRepository:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                DROP TABLE IF EXISTS traceforge_memory_entries;
                 """
             )
             self._migrate_todo_columns(conn)

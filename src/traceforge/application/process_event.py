@@ -14,6 +14,9 @@ from traceforge.core.todos import TodoAction
 from traceforge.infrastructure.identity.person_store import PersonStore
 from traceforge.infrastructure.llm.deepseek import DeepSeekClient
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
+from traceforge.memory.markdown_index import MarkdownMemoryIndex
+from traceforge.memory.factory import build_markdown_memory_index
+from traceforge.memory.markdown_store import MarkdownMemoryStore
 from traceforge.tools.models import ToolCall, ToolResult
 from traceforge.tools.todo_tools import build_default_tool_registry
 
@@ -44,11 +47,14 @@ class ProcessWorkspaceEvent:
         db_path = Path(settings.traceforge_db_path)
         self.repository = repository or SqliteTodoRepository(db_path)
         self.person_store = PersonStore(self.repository.db_path)
+        self.memory_store = MarkdownMemoryStore()
+        self.memory_index = build_markdown_memory_index(self.repository.db_path, self.memory_store, settings=settings)
         self.todo_workflow = todo_workflow or TodoWorkflow(self.repository, person_store=self.person_store)
         self.tool_registry = build_default_tool_registry(
             self.repository,
             workflow=self.todo_workflow,
             person_store=self.person_store,
+            memory_index=self.memory_index,
         )
         self._settings = settings
 

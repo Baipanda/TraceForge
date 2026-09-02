@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-SessionEventType = Literal["user", "assistant", "tool"]
+SessionEventType = Literal["user", "assistant", "tool", "compaction"]
 
 # Emulate OpenClaw agents.defaults.compaction.keepRecentTokens default.
 DEFAULT_KEEP_RECENT_TOKENS = 20_000
@@ -35,7 +35,7 @@ class SessionEvent:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SessionEvent | None:
         event_type = data.get("type")
-        if event_type not in {"user", "assistant", "tool"}:
+        if event_type not in {"user", "assistant", "tool", "compaction"}:
             return None
         content = data.get("content")
         if not isinstance(content, str):
@@ -94,6 +94,13 @@ class JsonlSessionStore:
             for event in items:
                 handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
 
+    def replace_events(self, session_key: str, events: list[SessionEvent]) -> None:
+        path = self.path_for(session_key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as handle:
+            for event in events:
+                handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
+
 
 def build_session_messages(
     events: list[SessionEvent],
@@ -125,16 +132,16 @@ def project_session_event(event: SessionEvent) -> dict[str, Any]:
         return {"role": "user", "content": event.content}
     if event.type == "assistant":
         return {"role": "assistant", "content": event.content}
-    # tool
-    payload = {
-        "role": "tool",
-        "content": event.content,
+    if event.type == "compaction":
+        return {"role": "assistant", "content": f"[会话压缩摘要]\n{event.content}"}
+    # Tool results are persisted for audit, but replayed as user-side context because
+    # the transcript does not store the preceding assistant tool_calls message.
+    tool_name = event.name or "tool"
+    status = "ok" if event.ok is not False else "error"
+    return {
+        "role": "user",
+        "content": f"[工具 {tool_name} · {status}]\n{event.content}",
     }
-    if event.name:
-        payload["name"] = event.name
-    if event.call_id:
-        payload["tool_call_id"] = event.call_id
-    return payload
 
 
 def estimate_tokens(text: str) -> int:

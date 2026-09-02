@@ -8,12 +8,17 @@ services:
       - ../.env
     environment:
       TRACEFORGE_DB_PATH: /data/traceforge.sqlite3
+      TRACEFORGE_MEMORY_EMBEDDING_PROVIDER: local
+      TRACEFORGE_MEMORY_EMBEDDING_CACHE_DIR: /data/models/embeddings
+      HF_ENDPOINT: https://hf-mirror.com
+      HF_HUB_DISABLE_XET: "1"
       # Docker: connect via host gateway; Host header stays 127.0.0.1:18443 (Zulip EXTERNAL_HOST).
       TRACEFORGE_ZULIP_API_CONNECT_URL: https://172.18.0.1:18443
     ports:
       - "${TRACEFORGE_PORT:-19090}:8090"
     volumes:
       - traceforge-app-data:/data
+      - ../workspace:/app/workspace
     restart: unless-stopped
     depends_on:
       - traceforge-postgres

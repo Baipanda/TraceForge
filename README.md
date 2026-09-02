@@ -19,7 +19,7 @@ workspace/               # Agent 工作区
 
 `src/traceforge` 负责稳定的系统实现；`workspace` 负责 Agent 身份、行为约定、Skills 和可调整的业务流程。
 
-当前已经加入 memory 子系统，用来承接会话摘要、身份事实和后续可扩展的长期记忆。
+当前已经加入 Markdown 记忆子系统：工作区文件为权威源，SQLite FTS/embedding 为派生索引；会话 transcript 走 JSONL。
 
 当前运行边界：
 
@@ -53,8 +53,8 @@ Zulip @Jarvis
   -> Context Builder
   -> Session Resolver
   -> WorkspaceGateway
-  -> MemoryService / AgentRuntime / Application
-  -> todo.* Tool
+  -> AgentRuntime / Application
+  -> todo.* / memory.* Tool
   -> TodoWorkflow / SQLite
   -> Jarvis 回帖到同一 Topic
 ```
@@ -70,16 +70,27 @@ Zulip message -> WorkspaceEvent -> Intent Router -> todo.* Tool -> TodoWorkflow 
 - `traceforge_todos`
 - `traceforge_todo_events`
 - `traceforge_sessions`
-- `traceforge_memory_entries`
+- `memory_md_chunks` / `memory_md_fts` / `memory_md_embeddings`（与主库同文件或独立 mem db，由部署决定）
 
 ## 开发
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,server]"
+pip install -e ".[dev,server,memory]"
 pytest
 ```
+
+### 本地 Embedding（无需 OpenAI Key）
+
+默认使用 `fastembed` + `BAAI/bge-small-zh-v1.5`，首次会自动下载到 `.traceforge/models/embeddings/`：
+
+```bash
+pip install -e ".[memory]"
+python -m traceforge.memory.download_embedding
+```
+
+对应 OpenClaw 的 `memorySearch.provider = local`；TraceForge 用 Python ONNX 模型，不用 node-llama-cpp GGUF。
 
 ## 最小服务
 

@@ -92,6 +92,10 @@ class SkillLoader:
                 "有哪些子",
             )
         )
+        remember_requested = any(
+            token in text
+            for token in ("以后", "之后", "记住", "下次请", "下次记得", "remember")
+        ) or "记住" in text
 
         if create_requested and not update_requested and not delete_requested:
             selected.append("todo-create")
@@ -105,6 +109,8 @@ class SkillLoader:
             selected.append("todo-list")
         if summary_requested:
             selected.append("topic-summary")
+        if remember_requested:
+            selected.append("memory-remember")
 
         # Soft fallback: user talked about a Todo but no verb matched. Give the model
         # list+update playbooks so natural phrases can still act (LLM decides).

@@ -13,6 +13,7 @@ def _settings() -> TraceForgeSettings:
         deepseek_base_url="https://api.deepseek.com",
         deepseek_model="deepseek-v4-flash",
         traceforge_api_url="http://127.0.0.1:19090",
+        traceforge_db_path="/tmp/traceforge-test.sqlite3",
         zulip_url="https://127.0.0.1:18443",
         zulip_email="Jarvis-bot@traceforge.local",
         zulip_api_key="test-key",

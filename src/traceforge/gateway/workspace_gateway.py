@@ -9,7 +9,9 @@ from traceforge.agent.models import AgentRequest, GatewayResponse, RunStatus
 from traceforge.config import get_settings
 from traceforge.context.zulip import ZulipContextBuilder
 from traceforge.core.events import WorkspaceEvent
-from traceforge.memory.service import MemoryService
+from traceforge.memory.markdown_index import MarkdownMemoryIndex
+from traceforge.memory.markdown_store import MarkdownMemoryStore
+from traceforge.session.compaction import maybe_flush_and_compact
 from traceforge.session.keys import SessionKeyResolver
 from traceforge.session.transcript import (
     DEFAULT_KEEP_RECENT_TOKENS,
@@ -50,11 +52,7 @@ class EventApplicationHandler:
 
 
 class WorkspaceGateway:
-    """TraceForge 的统一入口、上下文构建和路由层。
-
-    当前阶段仍然把 Todo 路由到确定性 Application。
-    后续可以在同一个入口把复杂请求路由到 AgentRuntime。
-    """
+    """TraceForge 的统一入口、上下文构建和路由层。"""
 
     def __init__(
         self,
@@ -64,7 +62,9 @@ class WorkspaceGateway:
         session_resolver: SessionKeyResolver | None = None,
         session_store: JsonlSessionStore | None = None,
         session_recorder: object | None = None,
-        memory_service: MemoryService | None = None,
+        memory_store: MarkdownMemoryStore | None = None,
+        memory_index: MarkdownMemoryIndex | None = None,
+        session_summarizer: object | None = None,
         keep_recent_tokens: int = DEFAULT_KEEP_RECENT_TOKENS,
     ) -> None:
         self._handler = handler
@@ -72,7 +72,9 @@ class WorkspaceGateway:
         self._session_resolver = session_resolver or SessionKeyResolver()
         self._session_store = session_store or JsonlSessionStore(_default_session_root())
         self._session_recorder = session_recorder
-        self._memory_service = memory_service
+        self._memory_store = memory_store or MarkdownMemoryStore()
+        self._memory_index = memory_index
+        self._session_summarizer = session_summarizer
         self._keep_recent_tokens = keep_recent_tokens
 
     def route(self, event: WorkspaceEvent) -> GatewayResponse:
@@ -82,9 +84,6 @@ class WorkspaceGateway:
         session_messages = tuple(
             build_session_messages(prior_events, keep_recent_tokens=self._keep_recent_tokens)
         )
-        memory_context_items = []
-        if self._memory_service is not None:
-            memory_context_items = self._memory_service.build_context(event, session_key, context)
         request = AgentRequest(
             event=event,
             session_key=session_key,
@@ -93,7 +92,6 @@ class WorkspaceGateway:
                 "source": event.source.value,
                 "kind": event.kind.value,
                 "zulip_context": context.to_dict(),
-                "memory_context_items": memory_context_items,
             },
         )
         if callable(self._session_recorder):
@@ -101,7 +99,6 @@ class WorkspaceGateway:
         if self._handler is None:
             raise RuntimeError("WorkspaceGateway handler is not configured")
 
-        # Mirror Zulip user text into the transcript before the agent run (OpenClaw-style).
         user_text = str(event.payload.get("text") or "").strip()
         if user_text:
             self._session_store.append(
@@ -115,13 +112,25 @@ class WorkspaceGateway:
 
         response = self._handler.handle(request)
         self._append_agent_turn(session_key, response)
-        if self._memory_service is not None:
-            self._memory_service.record_turn(
-                event,
-                session_key,
-                response,
-                conversation=context,
-                request_id=request.request_id,
+        compaction = maybe_flush_and_compact(
+            session_key=session_key,
+            store=self._session_store,
+            memory_store=self._memory_store,
+            memory_index=self._memory_index,
+            keep_recent_tokens=self._keep_recent_tokens,
+            summarizer=self._session_summarizer,
+            topic=event.location.topic,
+            channel_name=event.location.channel_name,
+        )
+        if compaction.flushed or compaction.compacted:
+            response.evidence.append(
+                {
+                    "type": "session.compaction",
+                    "flushed": compaction.flushed,
+                    "compacted": compaction.compacted,
+                    "transcript_tokens": compaction.transcript_tokens,
+                    "detail": compaction.detail,
+                }
             )
         return response
 

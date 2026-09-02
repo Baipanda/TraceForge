@@ -58,8 +58,15 @@ class TraceForgeSettings:
     zulip_reactions_enabled: bool = True
     agent_max_model_turns: int = 8
     agent_max_tool_calls: int = 12
-    memory_enabled: bool = True
-    memory_search_limit: int = 8
+    memory_search_mode: str = "hybrid"
+    memory_embedding_enabled: bool = True
+    memory_embedding_provider: str = "auto"
+    memory_embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    memory_embedding_cache_dir: str = ""
+    memory_embedding_fallback: str = "none"
+    memory_embedding_api_key: str | None = None
+    memory_embedding_base_url: str = ""
+    memory_hybrid_fts_weight: float = 0.5
     session_keep_recent_tokens: int = 20_000
 
     @property
@@ -69,15 +76,19 @@ class TraceForgeSettings:
 
 def get_settings() -> TraceForgeSettings:
     load_env_file()
+    db_path = os.environ.get(
+        "TRACEFORGE_DB_PATH",
+        str(Path(__file__).resolve().parents[2] / ".traceforge" / "traceforge.sqlite3"),
+    )
+    cache_dir = os.environ.get("TRACEFORGE_MEMORY_EMBEDDING_CACHE_DIR", "")
+    if not cache_dir:
+        cache_dir = str(Path(db_path).expanduser().resolve().parent / "models" / "embeddings")
     return TraceForgeSettings(
         deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY") or None,
         deepseek_base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
         deepseek_model=os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
         traceforge_api_url=os.environ.get("TRACEFORGE_API_URL", "http://127.0.0.1:19090"),
-        traceforge_db_path=os.environ.get(
-            "TRACEFORGE_DB_PATH",
-            str(Path(__file__).resolve().parents[2] / ".traceforge" / "traceforge.sqlite3"),
-        ),
+        traceforge_db_path=db_path,
         zulip_url=first_env("TRACEFORGE_ZULIP_URL", "ZULIP_URL", default="https://127.0.0.1:18443"),
         zulip_api_connect_url=first_env("TRACEFORGE_ZULIP_API_CONNECT_URL", "ZULIP_API_CONNECT_URL")
         or None,
@@ -94,8 +105,22 @@ def get_settings() -> TraceForgeSettings:
         zulip_reactions_enabled=env_bool("TRACEFORGE_ZULIP_REACTIONS_ENABLED", True),
         agent_max_model_turns=int(os.environ.get("TRACEFORGE_AGENT_MAX_MODEL_TURNS", "8")),
         agent_max_tool_calls=int(os.environ.get("TRACEFORGE_AGENT_MAX_TOOL_CALLS", "12")),
-        memory_enabled=env_bool("TRACEFORGE_MEMORY_ENABLED", True),
-        memory_search_limit=int(os.environ.get("TRACEFORGE_MEMORY_SEARCH_LIMIT", "8")),
+        memory_search_mode=os.environ.get("TRACEFORGE_MEMORY_SEARCH_MODE", "hybrid"),
+        memory_embedding_enabled=env_bool("TRACEFORGE_MEMORY_EMBEDDING_ENABLED", True),
+        memory_embedding_provider=os.environ.get("TRACEFORGE_MEMORY_EMBEDDING_PROVIDER", "auto"),
+        memory_embedding_model=os.environ.get(
+            "TRACEFORGE_MEMORY_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"
+        ),
+        memory_embedding_cache_dir=cache_dir,
+        memory_embedding_fallback=os.environ.get("TRACEFORGE_MEMORY_EMBEDDING_FALLBACK", "none"),
+        memory_embedding_api_key=os.environ.get("TRACEFORGE_MEMORY_EMBEDDING_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or None,
+        memory_embedding_base_url=os.environ.get(
+            "TRACEFORGE_MEMORY_EMBEDDING_BASE_URL",
+            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        ),
+        memory_hybrid_fts_weight=float(os.environ.get("TRACEFORGE_MEMORY_HYBRID_FTS_WEIGHT", "0.5")),
         session_keep_recent_tokens=int(
             os.environ.get("TRACEFORGE_SESSION_KEEP_RECENT_TOKENS", "20000")
         ),

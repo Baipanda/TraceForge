@@ -10,6 +10,8 @@ from traceforge.config import TraceForgeSettings, get_settings
 from traceforge.infrastructure.llm.deepseek import DeepSeekClient
 from traceforge.infrastructure.storage.sqlite_repository import SqliteTodoRepository
 from traceforge.infrastructure.zulip.client import ZulipApiClient
+from traceforge.memory.event_writer import MemoryEventWriter
+from traceforge.memory.markdown_index import MarkdownMemoryIndex
 from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 
@@ -20,6 +22,7 @@ def register_zulip_tools(
     *,
     zulip_client: ZulipApiClient | None = None,
     settings: TraceForgeSettings | None = None,
+    memory_index: MarkdownMemoryIndex | None = None,
 ) -> None:
     settings = settings or get_settings()
     synthesizer = None
@@ -30,6 +33,9 @@ def register_zulip_tools(
         zulip_client=zulip_client,
         synthesizer=synthesizer,
     )
+    writer = (
+        MemoryEventWriter(memory_index.store, memory_index) if memory_index is not None else None
+    )
 
     def _summarize(arguments: dict[str, Any]) -> ToolResult:
         result = workflow.summarize(
@@ -38,6 +44,24 @@ def register_zulip_tools(
             topic=arguments.get("topic"),
             include_todos=_parse_bool(arguments.get("include_todos"), default=True),
         )
+        if writer is not None:
+            status = next(
+                (
+                    str(item.get("status") or "")
+                    for item in result.evidence
+                    if isinstance(item, dict) and item.get("type") == "topic.summarize"
+                ),
+                "",
+            )
+            if status not in {"missing_location", "fetch_failed"}:
+                writer.record_topic_summary(
+                    stream=arguments.get("channel_name"),
+                    topic=arguments.get("topic"),
+                    reply_text=result.reply_text,
+                    digest=result.digest,
+                    message_count=len(result.messages),
+                    todo_count=len(result.todos),
+                )
         return ToolResult(
             tool_name="topic.summarize",
             ok=True,

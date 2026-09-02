@@ -4,6 +4,7 @@ from traceforge.tools.models import ToolCall, ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 from traceforge.tools.people_tools import register_people_tools
 from traceforge.tools.todo_tools import build_default_tool_registry, register_todo_tools
+from traceforge.tools.memory_tools import register_memory_tools
 
 __all__ = [
     "RegisteredTool",
@@ -13,4 +14,5 @@ __all__ = [
     "build_default_tool_registry",
     "register_people_tools",
     "register_todo_tools",
+    "register_memory_tools",
 ]

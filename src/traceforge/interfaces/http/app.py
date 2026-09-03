@@ -9,9 +9,16 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
+from pathlib import Path
+
 from traceforge.agent.harness import PromptHarness
 from traceforge.agent.runtime import AgentRuntime
-from traceforge.agents import AgentRouter, load_agents_config
+from traceforge.agents import (
+    AgentRouter,
+    load_agents_config,
+    resolve_sessions_root,
+    resolve_workspace_root,
+)
 from traceforge.application.gitea_audit_agent import GiteaAuditAgent
 from traceforge.application.process_event import ProcessWorkspaceEvent
 from traceforge.config import get_settings
@@ -20,6 +27,10 @@ from traceforge.infrastructure.llm.deepseek import DeepSeekClient
 from traceforge.interfaces.gitea.normalizer import normalize_gitea_webhook
 from traceforge.interfaces.gitea.signature import verify_gitea_signature
 from traceforge.interfaces.zulip.normalizer import normalize_zulip_payload
+from traceforge.memory.markdown_index import MarkdownMemoryIndex
+from traceforge.memory.markdown_store import MarkdownMemoryStore
+from traceforge.session.transcript import JsonlSessionStore
+from traceforge.tools.todo_tools import build_default_tool_registry
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +55,40 @@ _gateway = WorkspaceGateway(
     keep_recent_tokens=_settings.session_keep_recent_tokens,
 )
 _gitea_audit_agent = GiteaAuditAgent(settings=_settings, agents_config=_agents_config)
+_gateways: dict[str, WorkspaceGateway] = {"main": _gateway}
+
+
+def _gateway_for(agent_id: str) -> WorkspaceGateway:
+    if agent_id in _gateways:
+        return _gateways[agent_id]
+    entry = _agents_config.get(agent_id)
+    workspace_root = resolve_workspace_root(entry)
+    data_root = Path(_settings.traceforge_db_path).expanduser().resolve().parent
+    session_root = resolve_sessions_root(entry, data_root=data_root)
+    memory_store = MarkdownMemoryStore(workspace_root)
+    memory_index = MarkdownMemoryIndex(_processor.repository.db_path, memory_store)
+    # Expert agents share the default tool registry for now; narrow later via entry.tools.
+    runtime = AgentRuntime(
+        harness=PromptHarness(workspace_root=workspace_root, memory_store=memory_store),
+        tool_registry=build_default_tool_registry(
+            _processor.repository,
+            memory_index=memory_index,
+        ),
+        model=_model,
+        max_model_turns=_settings.agent_max_model_turns,
+        max_tool_calls=_settings.agent_max_tool_calls,
+    )
+    gateway = WorkspaceGateway(
+        handler=runtime,
+        session_store=JsonlSessionStore(session_root),
+        session_recorder=_processor.repository.record_session,
+        memory_store=memory_store,
+        memory_index=memory_index,
+        session_summarizer=_model,
+        keep_recent_tokens=_settings.session_keep_recent_tokens,
+    )
+    _gateways[agent_id] = gateway
+    return gateway
 
 
 async def homepage(_: Request) -> PlainTextResponse:
@@ -65,8 +110,12 @@ async def health(_: Request) -> JSONResponse:
 async def ingest_zulip_event(request: Request) -> JSONResponse:
     payload = await _json_body(request)
     event = normalize_zulip_payload(payload)
-    agent_id = _agent_router.resolve(event)
-    result = _gateway.route(event)
+    # Prefer explicit delivery agent_id from bridge, else bindings.
+    delivery = event.payload.get("delivery") if isinstance(event.payload.get("delivery"), dict) else {}
+    hinted = str(delivery.get("agent_id") or "").strip()
+    agent_id = hinted if hinted in _agents_config.agents else _agent_router.resolve(event)
+    gateway = _gateway_for(agent_id)
+    result = gateway.route(event)
     return JSONResponse(
         {
             "ok": True,

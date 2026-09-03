@@ -81,6 +81,12 @@ class TraceForgeSettings:
     mcp_tavily_command: str = "npx"
     mcp_tavily_args: str = "-y,tavily-mcp@latest"
     mcp_tavily_default_parameters: str = '{"max_results":5,"search_depth":"basic"}'
+    sandbox_workspace_root: str = ""
+    sandbox_workspace_access: str = "ro"
+    sandbox_denied_tools: str = "fs.write,fs.edit,exec,apply_patch"
+    sandbox_max_read_bytes: int = 200_000
+    sandbox_grep_max_matches: int = 50
+    sandbox_grep_max_file_bytes: int = 1_000_000
 
     @property
     def llm_enabled(self) -> bool:
@@ -182,5 +188,41 @@ def get_settings() -> TraceForgeSettings:
             "TRACEFORGE_MCP_TAVILY_DEFAULT_PARAMETERS",
             "MCP_TAVILY_DEFAULT_PARAMETERS",
             default='{"max_results":5,"search_depth":"basic"}',
+        ),
+        sandbox_workspace_root=first_env(
+            "TRACEFORGE_SANDBOX_WORKSPACE_ROOT",
+            "SANDBOX_WORKSPACE_ROOT",
+            default="",
+        ),
+        sandbox_workspace_access=first_env(
+            "TRACEFORGE_SANDBOX_WORKSPACE_ACCESS",
+            "SANDBOX_WORKSPACE_ACCESS",
+            default="ro",
+        ),
+        sandbox_denied_tools=first_env(
+            "TRACEFORGE_SANDBOX_DENIED_TOOLS",
+            "SANDBOX_DENIED_TOOLS",
+            default="fs.write,fs.edit,exec,apply_patch",
+        ),
+        sandbox_max_read_bytes=int(
+            first_env(
+                "TRACEFORGE_SANDBOX_MAX_READ_BYTES",
+                "SANDBOX_MAX_READ_BYTES",
+                default="200000",
+            )
+        ),
+        sandbox_grep_max_matches=int(
+            first_env(
+                "TRACEFORGE_SANDBOX_GREP_MAX_MATCHES",
+                "SANDBOX_GREP_MAX_MATCHES",
+                default="50",
+            )
+        ),
+        sandbox_grep_max_file_bytes=int(
+            first_env(
+                "TRACEFORGE_SANDBOX_GREP_MAX_FILE_BYTES",
+                "SANDBOX_GREP_MAX_FILE_BYTES",
+                default="1000000",
+            )
         ),
     )

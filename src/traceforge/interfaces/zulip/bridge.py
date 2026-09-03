@@ -16,17 +16,45 @@ from traceforge.config import TraceForgeSettings, get_settings
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class ZulipBotAccount:
+    """One Zulip delivery/listen identity for the bridge."""
+
+    email: str
+    api_key: str
+    bot_name: str
+    agent_id: str = "main"
+
+
 @dataclass
 class ZulipTraceForgeBridge:
     settings: TraceForgeSettings = field(default_factory=get_settings)
+    account: ZulipBotAccount | None = None
     seen_message_ids: set[int] = field(default_factory=set)
+
+    def _bot(self) -> ZulipBotAccount:
+        if self.account is not None:
+            return self.account
+        return ZulipBotAccount(
+            email=self.settings.zulip_email,
+            api_key=self.settings.zulip_api_key,
+            bot_name=self.settings.zulip_bot_name or "Jarvis",
+            agent_id="main",
+        )
 
     def run_forever(self) -> None:
         self._validate_settings()
+        bot = self._bot()
         queue = self._register_queue()
         queue_id = queue["queue_id"]
         last_event_id = int(queue["last_event_id"])
-        logger.info("Zulip bridge registered queue_id=%s last_event_id=%s", queue_id, last_event_id)
+        logger.info(
+            "Zulip bridge registered bot=%s agent_id=%s queue_id=%s last_event_id=%s",
+            bot.bot_name,
+            bot.agent_id,
+            queue_id,
+            last_event_id,
+        )
 
         while True:
             try:
@@ -86,12 +114,19 @@ class ZulipTraceForgeBridge:
             self.seen_message_ids.add(message_id)
 
         sender_email = str(message.get("sender_email") or "")
-        if sender_email.lower() == self.settings.zulip_email.lower():
+        bot = self._bot()
+        if sender_email.lower() == bot.email.lower():
             return
         if not self._should_handle_message(message):
             return
 
-        logger.info("Handling Zulip message id=%s from=%s", message_id, sender_email)
+        logger.info(
+            "Handling Zulip message id=%s from=%s bot=%s agent_id=%s",
+            message_id,
+            sender_email,
+            bot.bot_name,
+            bot.agent_id,
+        )
         self._start_progress(message)
         succeeded = False
         try:
@@ -118,8 +153,9 @@ class ZulipTraceForgeBridge:
         if message_type == "private":
             return True
         content = _plain_text(str(message.get("content") or ""))
-        bot_name = self.settings.zulip_bot_name.lower()
-        bot_email = self.settings.zulip_email.lower()
+        bot = self._bot()
+        bot_name = bot.bot_name.lower()
+        bot_email = bot.email.lower()
         lowered = content.lower()
         return (
             f"@{bot_name}" in lowered
@@ -129,8 +165,17 @@ class ZulipTraceForgeBridge:
         )
 
     def _call_traceforge(self, event: dict[str, Any]) -> dict[str, Any]:
+        bot = self._bot()
+        enriched = dict(event) if isinstance(event, dict) else {"raw_event": event}
+        enriched["traceforge_delivery"] = {
+            "account": bot.email,
+            "email": bot.email,
+            "bot_email": bot.email,
+            "bot_name": bot.bot_name,
+            "agent_id": bot.agent_id,
+        }
         url = f"{self.settings.traceforge_api_url.rstrip('/')}/api/events/zulip"
-        body = json.dumps(event).encode("utf-8")
+        body = json.dumps(enriched).encode("utf-8")
         request = urllib.request.Request(
             url=url,
             data=body,
@@ -145,9 +190,10 @@ class ZulipTraceForgeBridge:
             raise RuntimeError(f"TraceForge API HTTP {exc.code}: {detail}") from exc
 
     def _reply_to_message(self, message: dict[str, Any], content: str) -> None:
+        bot = self._bot()
         message_type = str(message.get("type") or "stream")
         if message_type == "private":
-            recipients = _direct_message_recipients(message, self.settings.zulip_email)
+            recipients = _direct_message_recipients(message, bot.email)
             payload = {"type": "private", "to": json.dumps(recipients), "content": content}
         else:
             stream = _stream_name(message)
@@ -238,12 +284,14 @@ class ZulipTraceForgeBridge:
         return payload
 
     def _basic_auth_token(self) -> str:
-        raw = f"{self.settings.zulip_email}:{self.settings.zulip_api_key}".encode("utf-8")
+        bot = self._bot()
+        raw = f"{bot.email}:{bot.api_key}".encode("utf-8")
         return base64.b64encode(raw).decode("ascii")
 
     def _validate_settings(self) -> None:
-        if not self.settings.zulip_api_key:
-            raise ValueError("ZULIP_API_KEY is required")
+        bot = self._bot()
+        if not bot.api_key:
+            raise ValueError(f"API key required for Zulip bot {bot.bot_name}")
 
 
 def _extract_reply_text(response: dict[str, Any]) -> str:
@@ -328,8 +376,49 @@ def _is_bad_event_queue(exc: Exception) -> bool:
 
 
 def main() -> None:
+    import threading
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    ZulipTraceForgeBridge().run_forever()
+    settings = get_settings()
+    accounts: list[ZulipBotAccount] = [
+        ZulipBotAccount(
+            email=settings.zulip_email,
+            api_key=settings.zulip_api_key,
+            bot_name=settings.zulip_bot_name or "Jarvis",
+            agent_id="main",
+        )
+    ]
+    repo_email = (settings.repoaudit_zulip_email or "").strip()
+    repo_key = (settings.repoaudit_zulip_api_key or "").strip()
+    if repo_email and repo_key:
+        accounts.append(
+            ZulipBotAccount(
+                email=repo_email,
+                api_key=repo_key,
+                bot_name="RepoAudit",
+                agent_id="gitea-audit",
+            )
+        )
+    else:
+        logger.warning("RepoAudit Zulip credentials missing; only Jarvis bridge will run")
+
+    if len(accounts) == 1:
+        ZulipTraceForgeBridge(settings=settings, account=accounts[0]).run_forever()
+        return
+
+    threads: list[threading.Thread] = []
+    for account in accounts:
+        bridge = ZulipTraceForgeBridge(settings=settings, account=account)
+        thread = threading.Thread(
+            target=bridge.run_forever,
+            name=f"zulip-bridge-{account.bot_name}",
+            daemon=True,
+        )
+        threads.append(thread)
+        thread.start()
+        logger.info("Started Zulip bridge thread for %s → agent %s", account.bot_name, account.agent_id)
+    for thread in threads:
+        thread.join()
 
 
 if __name__ == "__main__":

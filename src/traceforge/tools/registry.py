@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from traceforge.sandbox.policy import SandboxPolicy
 from traceforge.tools.models import ToolCall, ToolResult
 
 
@@ -22,8 +23,9 @@ class RegisteredTool:
 class ToolRegistry:
     """Unified registry for local tools and future MCP-backed tools."""
 
-    def __init__(self) -> None:
+    def __init__(self, policy: SandboxPolicy | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}
+        self.policy = policy
 
     def register(self, tool: RegisteredTool) -> None:
         if tool.name in self._tools:
@@ -45,9 +47,19 @@ class ToolRegistry:
                 "source": tool.source,
             }
             for tool in self._tools.values()
+            if self.policy is None or self.policy.allows_tool(tool.name)
         ]
 
     def call(self, call: ToolCall) -> ToolResult:
+        if self.policy is not None and not self.policy.allows_tool(call.name):
+            reason = self.policy.deny_reason(call.name) or f"tool denied: {call.name}"
+            return ToolResult(
+                tool_name=call.name,
+                ok=False,
+                error=reason,
+                evidence=[{"type": "policy_denied", "tool_name": call.name, "reason": reason}],
+                call_id=call.call_id,
+            )
         tool = self.get(call.name)
         result = tool.handler(call.arguments)
         return ToolResult(

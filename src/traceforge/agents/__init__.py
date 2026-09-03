@@ -103,6 +103,15 @@ class AgentRouter:
 
     def resolve(self, event: WorkspaceEvent) -> str:
         channel = event.source.value
+        delivery = event.payload.get("delivery") if isinstance(event.payload.get("delivery"), dict) else {}
+        account = str(
+            delivery.get("account")
+            or delivery.get("email")
+            or delivery.get("bot_email")
+            or event.payload.get("delivery_account")
+            or ""
+        ).strip()
+        bot_name = str(delivery.get("bot_name") or event.payload.get("delivery_bot_name") or "").strip()
         facts = {
             "channel": channel,
             "source": channel,
@@ -111,7 +120,10 @@ class AgentRouter:
             "channel_id": event.location.channel_id or "",
             "channel_name": event.location.channel_name or "",
             "topic": event.location.topic or "",
+            "account": account,
+            "bot_name": bot_name,
         }
+        # Prefer bindings that specify account/bot_name when those facts exist.
         for binding in self.config.bindings:
             if _match_all(binding.match, facts):
                 return binding.agent_id

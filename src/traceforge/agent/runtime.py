@@ -407,6 +407,8 @@ def _preferred_user_reply(results: list[ToolResult]) -> str | None:
         "topic.summarize",
         "zulip.fetch_topic",
         "web.search",
+        "fs.read",
+        "fs.grep",
     }
     for result in reversed(results):
         if not result.ok or result.tool_name not in preferred_tools:

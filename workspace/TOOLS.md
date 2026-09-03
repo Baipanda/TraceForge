@@ -19,6 +19,15 @@ Agent 只使用逻辑工具名，不关心工具的具体实现来源。
 - `todo.delete`
 - `todo.summary`
 - `web.search`（经 MCP Client 调用 Tavily MCP：`tavily-search` / `tavily_search`）
+- `fs.read`（只读读取 agent workspace 文件；逻辑沙箱 PathGuard）
+- `fs.grep`（在 workspace 内子串搜索；逻辑沙箱 PathGuard）
+
+## 逻辑沙箱（stage-1）
+
+- 默认 `workspace_access=ro`，根目录为 TraceForge `workspace/`
+- `ToolRegistry` 会按 deny 列表隐藏/拒绝工具（默认拒绝 `fs.write` / `fs.edit` / `exec` / `apply_patch`）
+- `fs.*` 路径必须落在 workspace root 下；`..`、越界绝对路径、symlink 逃逸返回 `policy_denied`
+- 本阶段无 Docker / 无 shell；容器沙箱以后再加
 
 ## 工具结果
 

@@ -19,6 +19,15 @@ bindings:
   - agentId: gitea-audit
     match:
       channel: gitea
+  # Zulip @RepoAudit / DM to RepoAudit → gitea-audit
+  - agentId: gitea-audit
+    match:
+      channel: zulip
+      account: RepoAudit-bot@traceforge.local
+  - agentId: gitea-audit
+    match:
+      channel: zulip
+      bot_name: RepoAudit
   - agentId: main
     match:
       channel: zulip

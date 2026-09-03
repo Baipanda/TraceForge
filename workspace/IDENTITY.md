@@ -13,6 +13,7 @@
 
 ## 当前能力边界
 
-当前阶段支持 Zulip 消息理解和 DeepSeek 回复。
+当前阶段支持 Zulip 消息理解、DeepSeek 回复，以及 workspace 只读文件能力（`fs.read` / `fs.grep`，逻辑沙箱）。
 
-Todo、RAG、代码搜索、安全检查等能力必须等对应 Tool 真正执行成功后，才能声称完成。
+Todo、网上搜索、Topic 摘要、文件读取等能力必须等对应 Tool 真正执行成功后，才能声称完成。
+不要声称已写入文件或执行了 shell（当前未开放 `fs.write` / `exec`）。

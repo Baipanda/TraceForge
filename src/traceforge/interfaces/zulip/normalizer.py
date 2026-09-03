@@ -51,6 +51,9 @@ def normalize_zulip_payload(
         display_name=str(sender_name) if sender_name else None,
     )
 
+    delivery_raw = payload.get("traceforge_delivery")
+    delivery: dict[str, Any] = delivery_raw if isinstance(delivery_raw, dict) else {}
+
     return WorkspaceEvent(
         source=EventSource.ZULIP,
         kind=EventKind.MESSAGE_CREATED,
@@ -69,6 +72,9 @@ def normalize_zulip_payload(
         payload={
             "text": strip_zulip_markup(str(content)),
             "raw": payload,
+            "delivery": delivery,
+            "delivery_account": str(delivery.get("account") or delivery.get("email") or ""),
+            "delivery_bot_name": str(delivery.get("bot_name") or ""),
         },
         external_event_id=str(payload.get("id") or message_id) if (payload.get("id") or message_id) else None,
         occurred_at=_parse_zulip_timestamp(message.get("timestamp") or payload.get("timestamp")),

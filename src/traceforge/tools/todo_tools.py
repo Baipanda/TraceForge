@@ -15,9 +15,11 @@ from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 from traceforge.tools.people_tools import register_people_tools
 from traceforge.tools.memory_tools import register_memory_tools
+from traceforge.tools.fs_tools import register_fs_tools
 from traceforge.tools.web_tools import register_web_tools
 from traceforge.tools.zulip_tools import register_zulip_tools
 from traceforge.config import get_settings
+from traceforge.sandbox.policy import policy_from_settings
 
 
 def build_default_tool_registry(
@@ -29,14 +31,16 @@ def build_default_tool_registry(
     person_store = person_store or PersonStore(repository.db_path)
     workflow = workflow or TodoWorkflow(repository, person_store=person_store)
     settings = get_settings()
+    policy = policy_from_settings(settings)
     memory_store = memory_index.store if memory_index is not None else MarkdownMemoryStore()
     memory_index = memory_index or MarkdownMemoryIndex(repository.db_path, memory_store)
-    registry = ToolRegistry()
+    registry = ToolRegistry(policy=policy)
     register_people_tools(registry, person_store)
     register_memory_tools(registry, index=memory_index)
     register_todo_tools(registry, workflow, memory_index=memory_index)
     register_zulip_tools(registry, repository, settings=settings, memory_index=memory_index)
     register_web_tools(registry, settings=settings)
+    register_fs_tools(registry, policy=policy)
     return registry
 
 

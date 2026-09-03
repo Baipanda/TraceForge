@@ -18,6 +18,7 @@ Agent 只使用逻辑工具名，不关心工具的具体实现来源。
 - `todo.update`
 - `todo.delete`
 - `todo.summary`
+- `web.search`（经 MCP Client 调用 Tavily MCP：`tavily-search` / `tavily_search`）
 
 ## 工具结果
 

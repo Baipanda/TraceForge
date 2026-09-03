@@ -22,6 +22,8 @@ services:
       TRACEFORGE_AGENTS_CONFIG: /app/agents.yaml
       TRACEFORGE_GITEA_URL: http://127.0.0.1:13000
       TRACEFORGE_GITEA_API_CONNECT_URL: http://172.18.0.1:13000
+      TRACEFORGE_MCP_TAVILY_COMMAND: node
+      TRACEFORGE_MCP_TAVILY_ARGS: /usr/lib/node_modules/tavily-mcp/build/index.js
     ports:
       - "${TRACEFORGE_PORT:-19090}:8090"
     restart: unless-stopped

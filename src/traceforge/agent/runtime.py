@@ -406,6 +406,7 @@ def _preferred_user_reply(results: list[ToolResult]) -> str | None:
         "subtree.todos",
         "topic.summarize",
         "zulip.fetch_topic",
+        "web.search",
     }
     for result in reversed(results):
         if not result.ok or result.tool_name not in preferred_tools:

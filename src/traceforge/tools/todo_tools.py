@@ -15,6 +15,7 @@ from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 from traceforge.tools.people_tools import register_people_tools
 from traceforge.tools.memory_tools import register_memory_tools
+from traceforge.tools.web_tools import register_web_tools
 from traceforge.tools.zulip_tools import register_zulip_tools
 from traceforge.config import get_settings
 
@@ -35,6 +36,7 @@ def build_default_tool_registry(
     register_memory_tools(registry, index=memory_index)
     register_todo_tools(registry, workflow, memory_index=memory_index)
     register_zulip_tools(registry, repository, settings=settings, memory_index=memory_index)
+    register_web_tools(registry, settings=settings)
     return registry
 
 

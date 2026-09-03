@@ -77,6 +77,10 @@ class TraceForgeSettings:
     gitea_api_connect_url: str | None = None
     gitea_token: str = ""
     agents_config_path: str = ""
+    tavily_api_key: str = ""
+    mcp_tavily_command: str = "npx"
+    mcp_tavily_args: str = "-y,tavily-mcp@latest"
+    mcp_tavily_default_parameters: str = '{"max_results":5,"search_depth":"basic"}'
 
     @property
     def llm_enabled(self) -> bool:
@@ -164,5 +168,19 @@ def get_settings() -> TraceForgeSettings:
         gitea_token=first_env("TRACEFORGE_GITEA_TOKEN", "GITEA_TOKEN", default=""),
         agents_config_path=first_env(
             "TRACEFORGE_AGENTS_CONFIG", "AGENTS_CONFIG", default=""
+        ),
+        tavily_api_key=first_env("TRACEFORGE_TAVILY_API_KEY", "TAVILY_API_KEY", default=""),
+        mcp_tavily_command=first_env(
+            "TRACEFORGE_MCP_TAVILY_COMMAND", "MCP_TAVILY_COMMAND", default="npx"
+        ),
+        mcp_tavily_args=first_env(
+            "TRACEFORGE_MCP_TAVILY_ARGS",
+            "MCP_TAVILY_ARGS",
+            default="-y,tavily-mcp@latest",
+        ),
+        mcp_tavily_default_parameters=first_env(
+            "TRACEFORGE_MCP_TAVILY_DEFAULT_PARAMETERS",
+            "MCP_TAVILY_DEFAULT_PARAMETERS",
+            default='{"max_results":5,"search_depth":"basic"}',
         ),
     )

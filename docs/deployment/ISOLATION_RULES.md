@@ -10,12 +10,14 @@ TraceForge 的开发部署必须和当前机器上的现有 Zulip / OpenClaw 完
 - `traceforge-postgres`
 - `traceforge-redis`
 - `traceforge-zulip-*`
+- `traceforge-gitea`
 
 数据卷必须使用 `traceforge-` 前缀：
 
 - `traceforge-postgres-data`
 - `traceforge-zulip-postgres-data`
 - `traceforge-zulip-data`
+- `traceforge-gitea-data`
 
 数据库名使用：
 
@@ -38,6 +40,8 @@ TraceForge 的开发部署必须和当前机器上的现有 Zulip / OpenClaw 完
 | TraceForge Zulip HTTPS | `18443` |
 | TraceForge Zulip HTTP | `18080` |
 | TraceForge Zulip PostgreSQL | `15433` |
+| TraceForge Gitea HTTP | `13000` |
+| TraceForge Gitea SSH | `12222` |
 
 ## 数据规则
 

@@ -59,6 +59,15 @@ Zulip @Jarvis
   -> Jarvis 回帖到同一 Topic
 ```
 
+Gitea 出事喊一声（第一期，不经 AgentRuntime）：
+
+```text
+Gitea Webhook
+  -> POST /api/events/gitea
+  -> normalize + audit JSONL
+  -> RepoAudit Zulip API → stream/topic（默认 general / gitea）
+```
+
 第一个里程碑是 Topic 感知的 Todo Agent：
 
 ```text

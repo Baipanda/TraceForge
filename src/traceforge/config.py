@@ -68,6 +68,15 @@ class TraceForgeSettings:
     memory_embedding_base_url: str = ""
     memory_hybrid_fts_weight: float = 0.5
     session_keep_recent_tokens: int = 20_000
+    gitea_webhook_secret: str = ""
+    repoaudit_zulip_email: str = ""
+    repoaudit_zulip_api_key: str = ""
+    repoaudit_notify_stream: str = "general"
+    repoaudit_notify_topic: str = "gitea"
+    gitea_url: str = "http://127.0.0.1:13000"
+    gitea_api_connect_url: str | None = None
+    gitea_token: str = ""
+    agents_config_path: str = ""
 
     @property
     def llm_enabled(self) -> bool:
@@ -123,5 +132,37 @@ def get_settings() -> TraceForgeSettings:
         memory_hybrid_fts_weight=float(os.environ.get("TRACEFORGE_MEMORY_HYBRID_FTS_WEIGHT", "0.5")),
         session_keep_recent_tokens=int(
             os.environ.get("TRACEFORGE_SESSION_KEEP_RECENT_TOKENS", "20000")
+        ),
+        gitea_webhook_secret=first_env(
+            "TRACEFORGE_GITEA_WEBHOOK_SECRET", "GITEA_WEBHOOK_SECRET", default=""
+        ),
+        repoaudit_zulip_email=first_env(
+            "TRACEFORGE_REPOAUDIT_ZULIP_EMAIL",
+            "REPOAUDIT_ZULIP_EMAIL",
+            default="RepoAudit-bot@traceforge.local",
+        ),
+        repoaudit_zulip_api_key=first_env(
+            "TRACEFORGE_REPOAUDIT_ZULIP_API_KEY", "REPOAUDIT_ZULIP_API_KEY", default=""
+        ),
+        repoaudit_notify_stream=first_env(
+            "TRACEFORGE_REPOAUDIT_NOTIFY_STREAM",
+            "REPOAUDIT_NOTIFY_STREAM",
+            default="general",
+        ),
+        repoaudit_notify_topic=first_env(
+            "TRACEFORGE_REPOAUDIT_NOTIFY_TOPIC",
+            "REPOAUDIT_NOTIFY_TOPIC",
+            default="gitea",
+        ),
+        gitea_url=first_env(
+            "TRACEFORGE_GITEA_URL", "GITEA_URL", default="http://127.0.0.1:13000"
+        ),
+        gitea_api_connect_url=first_env(
+            "TRACEFORGE_GITEA_API_CONNECT_URL", "GITEA_API_CONNECT_URL"
+        )
+        or None,
+        gitea_token=first_env("TRACEFORGE_GITEA_TOKEN", "GITEA_TOKEN", default=""),
+        agents_config_path=first_env(
+            "TRACEFORGE_AGENTS_CONFIG", "AGENTS_CONFIG", default=""
         ),
     )

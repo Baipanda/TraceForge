@@ -1,0 +1,27 @@
+# TraceForge multi-agent registry (OpenClaw-aligned, M1–M3)
+
+agents:
+  main:
+    default: true
+    workspace: workspace
+    # Relative to TRACEFORGE_DB_PATH parent (Docker: /data)
+    sessions: agents/main/sessions
+  gitea-audit:
+    workspace: workspace-gitea-audit
+    sessions: agents/gitea-audit/sessions
+    tools:
+      - memory.search
+      - memory.get
+      - memory.remember
+
+bindings:
+  # More specific rules first; fields within a rule are AND.
+  - agentId: gitea-audit
+    match:
+      channel: gitea
+  - agentId: main
+    match:
+      channel: zulip
+
+shared:
+  root: workspace_shared

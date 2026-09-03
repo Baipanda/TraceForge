@@ -1,0 +1,53 @@
+# TraceForge 独立 Gitea（开发/演示）
+#
+# 跳过易失败的网页安装向导：INSTALL_LOCK=true + 首次启动自动 migrate/建管理员。
+
+services:
+  gitea:
+    image: docker.io/gitea/gitea:1.22.6
+    container_name: traceforge-gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      GITEA__APP_NAME: "TraceForge Gitea"
+      GITEA__server__DOMAIN: "${TRACEFORGE_GITEA_DOMAIN:-127.0.0.1}"
+      GITEA__server__ROOT_URL: "${TRACEFORGE_GITEA_ROOT_URL:-http://127.0.0.1:13000/}"
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__SSH_DOMAIN: "${TRACEFORGE_GITEA_DOMAIN:-127.0.0.1}"
+      GITEA__server__START_SSH_SERVER: "false"
+      GITEA__server__DISABLE_SSH: "false"
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "false"
+      GITEA__webhook__ALLOWED_HOST_LIST: "loopback,private,external"
+      # 首次启动用（见 entrypoint 脚本）
+      TRACEFORGE_GITEA_ADMIN_USER: "${TRACEFORGE_GITEA_ADMIN_USER:-gitea-admin}"
+      TRACEFORGE_GITEA_ADMIN_PASSWORD: "${TRACEFORGE_GITEA_ADMIN_PASSWORD:-TraceForge@2026}"
+      TRACEFORGE_GITEA_ADMIN_EMAIL: "${TRACEFORGE_GITEA_ADMIN_EMAIL:-gitea-admin@traceforge.local}"
+    ports:
+      - "${TRACEFORGE_GITEA_HTTP_PORT:-13000}:3000"
+      - "${TRACEFORGE_GITEA_SSH_HOST_PORT:-12222}:22"
+    volumes:
+      - traceforge-gitea-data:/data
+      - ./bootstrap-admin.sh:/usr/local/bin/traceforge-gitea-bootstrap.sh:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint:
+      - /bin/bash
+      - /usr/local/bin/traceforge-gitea-bootstrap.sh
+    networks:
+      - traceforge-gitea-net
+      - traceforge-app-net
+
+volumes:
+  traceforge-gitea-data:
+
+networks:
+  traceforge-gitea-net:
+    name: traceforge-gitea-net
+  traceforge-app-net:
+    # Same compose project as deploy/docker-compose.yml (service: traceforge → container traceforge-app)
+    external: true
+    name: deploy_default

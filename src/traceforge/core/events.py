@@ -9,6 +9,7 @@ from uuid import uuid4
 
 class EventSource(StrEnum):
     ZULIP = "zulip"
+    GITEA = "gitea"
     API = "api"
     CLI = "cli"
     SYSTEM = "system"

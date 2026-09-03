@@ -167,5 +167,14 @@ class WorkspaceGateway:
 
 
 def _default_session_root() -> Path:
+    from traceforge.agents import load_agents_config, resolve_sessions_root
+
     settings = get_settings()
-    return Path(settings.traceforge_db_path).expanduser().resolve().parent / "sessions"
+    data_root = Path(settings.traceforge_db_path).expanduser().resolve().parent
+    legacy = data_root / "sessions"
+    try:
+        config = load_agents_config(settings.agents_config_path or None)
+        entry = config.get(config.default_agent_id())
+        return resolve_sessions_root(entry, data_root=data_root, legacy_sessions=legacy)
+    except Exception:
+        return legacy

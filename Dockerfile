@@ -7,6 +7,9 @@ RUN pip install --no-cache-dir "starlette>=0.37" "uvicorn>=0.30" "fastembed>=0.5
 
 COPY src ./src
 COPY workspace ./workspace
+COPY workspace-gitea-audit ./workspace-gitea-audit
+COPY workspace_shared ./workspace_shared
+COPY agents.yaml ./agents.yaml
 
 ENV PYTHONPATH=/app/src
 ENV TRACEFORGE_MEMORY_EMBEDDING_PROVIDER=local

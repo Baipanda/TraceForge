@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import ssl
 import urllib.error
 import urllib.parse
@@ -14,6 +15,8 @@ from typing import Any
 
 from traceforge.config import TraceForgeSettings, get_settings
 from traceforge.interfaces.zulip.normalizer import strip_zulip_markup
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,59 @@ class ZulipTopicMessage:
 class ZulipApiClient:
     def __init__(self, settings: TraceForgeSettings | None = None) -> None:
         self.settings = settings or get_settings()
+
+    def send_stream_message(
+        self,
+        *,
+        stream: str,
+        topic: str,
+        content: str,
+        email: str | None = None,
+        api_key: str | None = None,
+    ) -> int | None:
+        """Post a stream message; returns Zulip message id when present."""
+        payload = {
+            "type": "stream",
+            "to": stream,
+            "topic": topic,
+            "content": content,
+        }
+        body = urllib.parse.urlencode(payload).encode("utf-8")
+        result = self._request(
+            "POST",
+            "/api/v1/messages",
+            body,
+            30,
+            email=email,
+            api_key=api_key,
+        )
+        mid = result.get("id")
+        return int(mid) if isinstance(mid, int) else None
+
+    def ensure_stream_subscription(
+        self,
+        *,
+        stream: str,
+        email: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
+        """Best-effort subscribe the auth identity to a stream (bots need this to post)."""
+        subscriptions = json.dumps([{"name": stream}])
+        body = urllib.parse.urlencode({"subscriptions": subscriptions}).encode("utf-8")
+        try:
+            self._request(
+                "POST",
+                "/api/v1/users/me/subscriptions",
+                body,
+                30,
+                email=email,
+                api_key=api_key,
+            )
+        except RuntimeError as exc:
+            # Already subscribed / stream missing — caller will see send errors if fatal.
+            if "already" in str(exc).lower():
+                return
+            logger.warning("ensure_stream_subscription: %s", exc)
 
     def fetch_topic_messages_all(
         self,
@@ -116,13 +172,20 @@ class ZulipApiClient:
         return self._request("GET", f"{path}?{query}", None, timeout_seconds)
 
     def _request(
-        self, method: str, path: str, body: bytes | None, timeout_seconds: float
+        self,
+        method: str,
+        path: str,
+        body: bytes | None,
+        timeout_seconds: float,
+        *,
+        email: str | None = None,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
         logical_base = self.settings.zulip_url.rstrip("/")
         connect_base = (self.settings.zulip_api_connect_url or logical_base).rstrip("/")
         url = f"{connect_base}{path}"
         headers = {
-            "Authorization": f"Basic {self._basic_auth_token()}",
+            "Authorization": f"Basic {self._basic_auth_token(email=email, api_key=api_key)}",
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
@@ -147,6 +210,10 @@ class ZulipApiClient:
             raise RuntimeError(f"Zulip API error: {payload}")
         return payload
 
-    def _basic_auth_token(self) -> str:
-        raw = f"{self.settings.zulip_email}:{self.settings.zulip_api_key}".encode("utf-8")
+    def _basic_auth_token(self, *, email: str | None = None, api_key: str | None = None) -> str:
+        use_email = (email or self.settings.zulip_email or "").strip()
+        use_key = (api_key or self.settings.zulip_api_key or "").strip()
+        if not use_key:
+            raise RuntimeError("ZULIP_API_KEY is not configured")
+        raw = f"{use_email}:{use_key}".encode("utf-8")
         return base64.b64encode(raw).decode("ascii")

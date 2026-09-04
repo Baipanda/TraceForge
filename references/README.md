@@ -9,6 +9,7 @@ TraceForge 通过稳定的外部接口与这些系统协作，而不是把对方
 | 模块 | 定位 | 接入面 |
 |---|---|---|
 | [todo-show](todo-show/README.md) | 团队 Todo 管理：任务生命周期、人员角色、进展同步与操作审计 | REST API（`/api/todos` 等） |
+| [project-admin](project-admin/README.md) | Mentor 项目名片：Topic/文档/Gitea/成员绑定与 SOP 报告展示 | REST API（`/api/projects`、`/api/reports`） |
 
 ## 接入原则
 

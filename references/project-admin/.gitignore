@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+node_modules/
+dist/
+.tools/
+data/*.sqlite3
+data/*.sqlite3-*

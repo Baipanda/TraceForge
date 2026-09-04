@@ -21,6 +21,7 @@ from traceforge.agents import (
 )
 from traceforge.application.gitea_audit_agent import GiteaAuditAgent
 from traceforge.application.process_event import ProcessWorkspaceEvent
+from traceforge.application.progress_sop import ProgressSopHandler, ProgressSopWorkflow
 from traceforge.config import get_settings
 from traceforge.gateway.workspace_gateway import WorkspaceGateway
 from traceforge.infrastructure.llm.deepseek import DeepSeekClient
@@ -38,16 +39,28 @@ _processor = ProcessWorkspaceEvent()
 _settings = get_settings()
 _agents_config = load_agents_config(_settings.agents_config_path or None)
 _agent_router = AgentRouter(_agents_config)
+_progress_sop = ProgressSopWorkflow(
+    settings=_settings,
+    todo_workflow=_processor.todo_workflow,
+)
 _model = DeepSeekClient(_settings) if _settings.llm_enabled else None
 _runtime = AgentRuntime(
     harness=PromptHarness(memory_store=_processor.memory_store),
-    tool_registry=_processor.tool_registry,
+    tool_registry=build_default_tool_registry(
+        _processor.repository,
+        workflow=_processor.todo_workflow,
+        person_store=_processor.person_store,
+        memory_index=_processor.memory_index,
+        agent_send_handler=_progress_sop.agent_send,
+    ),
     model=_model,
     max_model_turns=_settings.agent_max_model_turns,
     max_tool_calls=_settings.agent_max_tool_calls,
 )
+# Keep processor registry in sync for any legacy path that still uses it.
+_processor.tool_registry = _runtime.tool_registry
 _gateway = WorkspaceGateway(
-    handler=_runtime,
+    handler=ProgressSopHandler(_runtime, _progress_sop),
     session_recorder=_processor.repository.record_session,
     memory_store=_processor.memory_store,
     memory_index=_processor.memory_index,
@@ -129,6 +142,7 @@ async def ingest_zulip_event(request: Request) -> JSONResponse:
                 "intent": _intent_from_evidence(result.evidence),
                 "reply_text": result.reply_text,
                 "evidence": result.evidence,
+                "widget_content": result.widget_content,
             },
         }
     )

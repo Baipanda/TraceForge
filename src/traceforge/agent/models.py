@@ -90,6 +90,7 @@ class GatewayResponse:
     reply_text: str
     status: RunStatus
     evidence: list[dict[str, Any]] = field(default_factory=list)
+    widget_content: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

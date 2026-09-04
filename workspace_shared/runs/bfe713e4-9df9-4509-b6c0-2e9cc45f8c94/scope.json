@@ -1,0 +1,56 @@
+{
+  "project": {
+    "display_name": "Todo Show 开发",
+    "description": "progress-sop 演示样例：对照 references/todo-show",
+    "status": "active",
+    "zulip_stream": "sandbox",
+    "zulip_stream_id": "",
+    "zulip_topic": "todo-show开发",
+    "notify_topic": "",
+    "docs_root": "workspace_shared/docs/todo-show",
+    "prd_path": "PRD.md",
+    "tech_path": "TECH.md",
+    "gitea_owner": "traceforge",
+    "gitea_repo": "TraceForge",
+    "default_branch": "main",
+    "path_filters": [
+      "references/todo-show/"
+    ],
+    "subtree_code": "software.cloud.agent",
+    "todo_show_project_id": "",
+    "window_days": 7,
+    "start_at": null,
+    "target_at": null,
+    "project_id": "todo-show",
+    "created_by": "traceforge-admin",
+    "updated_by": "traceforge-admin",
+    "created_at": "2026-09-04T09:54:52+00:00",
+    "updated_at": "2026-09-04T09:54:52+00:00",
+    "members": [
+      {
+        "person_name": "Bai",
+        "person_id": "",
+        "role": "dev",
+        "id": 2,
+        "project_id": "todo-show",
+        "created_at": "2026-09-04T09:54:52+00:00"
+      },
+      {
+        "person_name": "Neymar",
+        "person_id": "",
+        "role": "dev",
+        "id": 3,
+        "project_id": "todo-show",
+        "created_at": "2026-09-04T09:54:52+00:00"
+      },
+      {
+        "person_name": "traceforge-admin",
+        "person_id": "",
+        "role": "owner",
+        "id": 1,
+        "project_id": "todo-show",
+        "created_at": "2026-09-04T09:54:52+00:00"
+      }
+    ]
+  }
+}

@@ -8,12 +8,14 @@ services:
       - ../.env
     volumes:
       - traceforge-app-data:/data
+      # Share host Todo/session SQLite with the container (same DB as local agent/todo work).
+      - ../.traceforge:/host/.traceforge
       - ../workspace:/app/workspace
       - ../workspace-gitea-audit:/app/workspace-gitea-audit
       - ../workspace_shared:/app/workspace_shared
       - ../agents.yaml:/app/agents.yaml:ro
     environment:
-      TRACEFORGE_DB_PATH: /data/traceforge.sqlite3
+      TRACEFORGE_DB_PATH: /host/.traceforge/traceforge.sqlite3
       TRACEFORGE_MEMORY_EMBEDDING_PROVIDER: local
       TRACEFORGE_MEMORY_EMBEDDING_CACHE_DIR: /data/models/embeddings
       HF_ENDPOINT: https://hf-mirror.com
@@ -24,6 +26,8 @@ services:
       TRACEFORGE_GITEA_API_CONNECT_URL: http://172.18.0.1:13000
       TRACEFORGE_MCP_TAVILY_COMMAND: node
       TRACEFORGE_MCP_TAVILY_ARGS: /usr/lib/node_modules/tavily-mcp/build/index.js
+      # Host project-admin (bound 0.0.0.0:18081); gateway IP works from compose network
+      TRACEFORGE_PROJECT_ADMIN_URL: http://172.20.0.1:18081
     ports:
       - "${TRACEFORGE_PORT:-19090}:8090"
     restart: unless-stopped

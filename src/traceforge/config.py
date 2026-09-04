@@ -87,6 +87,8 @@ class TraceForgeSettings:
     sandbox_max_read_bytes: int = 200_000
     sandbox_grep_max_matches: int = 50
     sandbox_grep_max_file_bytes: int = 1_000_000
+    project_admin_url: str = "http://127.0.0.1:18081"
+    project_admin_mentor: str = "traceforge-admin"
 
     @property
     def llm_enabled(self) -> bool:
@@ -224,5 +226,15 @@ def get_settings() -> TraceForgeSettings:
                 "SANDBOX_GREP_MAX_FILE_BYTES",
                 default="1000000",
             )
+        ),
+        project_admin_url=first_env(
+            "TRACEFORGE_PROJECT_ADMIN_URL",
+            "PROJECT_ADMIN_URL",
+            default="http://127.0.0.1:18081",
+        ),
+        project_admin_mentor=first_env(
+            "TRACEFORGE_PROJECT_ADMIN_MENTOR",
+            "PROJECT_ADMIN_MENTOR",
+            default="traceforge-admin",
         ),
     )

@@ -21,6 +21,9 @@ Agent 只使用逻辑工具名，不关心工具的具体实现来源。
 - `web.search`（经 MCP Client 调用 Tavily MCP：`tavily-search` / `tavily_search`）
 - `fs.read`（只读读取 agent workspace 文件；逻辑沙箱 PathGuard）
 - `fs.grep`（在 workspace 内子串搜索；逻辑沙箱 PathGuard）
+- `project.resolve` / `project.get`（只读 Project Admin：进度 SOP Scope 查库）
+- `zulip.send_choices`（Zulip zform 选项按钮，HITL）
+- `agent.send`（进程内发给其他 Agent；progress-sop Audit → `gitea-audit`）
 
 ## 逻辑沙箱（stage-1）
 

@@ -55,3 +55,15 @@
 - source: todo.create
 - topic=auth
 - Todo create: 「检查认证模块」 status=open assignee=Neymar subtree=软件
+
+
+## 2026-09-04 11:01:44 UTC · progress-sop `todo-show`
+- run_id: `d27b2fb0-5a4b-47ab-9581-9c294dd21fec`
+- focus: blocked
+- window_days: 7
+
+
+## 2026-09-04 11:01:44 UTC · progress-sop `todo-show`
+- run_id: `d27b2fb0-5a4b-47ab-9581-9c294dd21fec`
+- focus: blocked
+- window_days: 7

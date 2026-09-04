@@ -5,3 +5,8 @@
 - **不是**第三个 Agent，没有独立 session / 人格
 - 各 Agent workspace 通过只读方式引用这里的内容（后续 knowledge 工具）
 - 人格、skills、行为边界仍放在各自的 `workspace` / `workspace-<id>`
+
+## 演示文档
+
+- `docs/todo-show/`：progress-sop 样例（PRD / TECH / STATUS）
+- `runs/<run_id>/`：某次 progress-sop 产物（docs/discussion/tasks/audit/report）

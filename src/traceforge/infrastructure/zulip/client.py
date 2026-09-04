@@ -40,14 +40,20 @@ class ZulipApiClient:
         content: str,
         email: str | None = None,
         api_key: str | None = None,
+        widget_content: dict[str, Any] | str | None = None,
     ) -> int | None:
         """Post a stream message; returns Zulip message id when present."""
-        payload = {
+        payload: dict[str, str] = {
             "type": "stream",
             "to": stream,
             "topic": topic,
             "content": content,
         }
+        if widget_content is not None:
+            if isinstance(widget_content, str):
+                payload["widget_content"] = widget_content
+            else:
+                payload["widget_content"] = json.dumps(widget_content, ensure_ascii=False)
         body = urllib.parse.urlencode(payload).encode("utf-8")
         result = self._request(
             "POST",

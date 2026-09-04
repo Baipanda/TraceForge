@@ -113,6 +113,10 @@ class SkillLoader:
                 "grep",
             )
         ) or any(token in text for token in ("读一下", "搜文件", "工作区文件"))
+        progress_requested = any(
+            token in text
+            for token in ("项目进度", "进度体检", "进度SOP", "进度 sop", "progress sop", "progress-sop")
+        ) or "sop continue" in lowered or "sop followup" in lowered
 
         if create_requested and not update_requested and not delete_requested:
             selected.append("todo-create")
@@ -130,6 +134,8 @@ class SkillLoader:
             selected.append("memory-remember")
         if fs_requested:
             selected.append("fs-workspace")
+        if progress_requested:
+            selected.append("progress-sop")
 
         # Soft fallback: user talked about a Todo but no verb matched. Give the model
         # list+update playbooks so natural phrases can still act (LLM decides).

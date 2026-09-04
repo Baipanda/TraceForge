@@ -132,7 +132,8 @@ class ZulipTraceForgeBridge:
         try:
             traceforge_response = self._call_traceforge(event)
             reply_text = _extract_reply_text(traceforge_response)
-            self._reply_to_message(message, reply_text)
+            widget_content = _extract_widget_content(traceforge_response)
+            self._reply_to_message(message, reply_text, widget_content=widget_content)
             succeeded = True
             logger.info("Replied to Zulip message id=%s", message_id)
         except Exception as exc:
@@ -189,16 +190,31 @@ class ZulipTraceForgeBridge:
             detail = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"TraceForge API HTTP {exc.code}: {detail}") from exc
 
-    def _reply_to_message(self, message: dict[str, Any], content: str) -> None:
+    def _reply_to_message(
+        self,
+        message: dict[str, Any],
+        content: str,
+        *,
+        widget_content: dict[str, Any] | str | None = None,
+    ) -> None:
         bot = self._bot()
         message_type = str(message.get("type") or "stream")
         if message_type == "private":
             recipients = _direct_message_recipients(message, bot.email)
-            payload = {"type": "private", "to": json.dumps(recipients), "content": content}
+            payload: dict[str, Any] = {
+                "type": "private",
+                "to": json.dumps(recipients),
+                "content": content,
+            }
         else:
             stream = _stream_name(message)
             topic = str(message.get("subject") or message.get("topic") or "")
             payload = {"type": "stream", "to": stream, "topic": topic, "content": content}
+        if widget_content is not None:
+            if isinstance(widget_content, str):
+                payload["widget_content"] = widget_content
+            else:
+                payload["widget_content"] = json.dumps(widget_content, ensure_ascii=False)
         self._zulip_post("/api/v1/messages", payload)
 
     def _start_progress(self, message: dict[str, Any]) -> None:
@@ -299,6 +315,14 @@ def _extract_reply_text(response: dict[str, Any]) -> str:
     if isinstance(result, dict) and isinstance(result.get("reply_text"), str):
         return result["reply_text"]
     return "TraceForge 已收到消息，但没有生成回复内容。"
+
+
+def _extract_widget_content(response: dict[str, Any]) -> dict[str, Any] | None:
+    result = response.get("result")
+    if not isinstance(result, dict):
+        return None
+    widget = result.get("widget_content")
+    return widget if isinstance(widget, dict) else None
 
 
 def _stream_name(message: dict[str, Any]) -> str:

@@ -52,16 +52,19 @@ def project_root() -> Path:
 
 
 def default_agents_config_path() -> Path:
-    env_path = Path(__import__("os").environ.get("TRACEFORGE_AGENTS_CONFIG", "") or "")
-    if env_path.as_posix():
-        return env_path.expanduser()
+    raw = (__import__("os").environ.get("TRACEFORGE_AGENTS_CONFIG", "") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
     return project_root() / "agents.yaml"
 
 
 def load_agents_config(path: Path | str | None = None) -> AgentsConfig:
-    config_path = Path(path) if path else default_agents_config_path()
-    if not config_path.exists():
-        return _builtin_config(config_path)
+    if path is None or str(path).strip() in {"", "."}:
+        config_path = default_agents_config_path()
+    else:
+        config_path = Path(path)
+    if not config_path.is_file():
+        return _builtin_config(config_path if config_path.suffix else default_agents_config_path())
     raw = _parse_simple_yaml(config_path.read_text(encoding="utf-8"))
     return _from_dict(raw, config_path=config_path)
 

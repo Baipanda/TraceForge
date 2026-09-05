@@ -4,6 +4,32 @@ TraceForge 是一个面向研发/安全团队的 Workspace Agent 产品。
 
 它把 Zulip 讨论、任务、文档、代码仓库和安全事件转化为可追踪、可执行、可审计的智能体工作流。
 
+## 系统展示
+
+### Zulip × Jarvis：Todo 查询
+
+在频道里 `@Jarvis` 按组织树查询 Todo，Agent 回帖结构化列表（状态、负责人、subtree、Topic）。
+
+![Zulip Todo 列表](docs/screenshots/zulip-todo-list.png)
+
+### Zulip × RepoAudit：Gitea 推送与语法审计
+
+Gitea Webhook 触发后，RepoAudit 在 Zulip 喊一声，并对变更文件做轻量语法检查（只报告建议，不改代码）。
+
+![Zulip RepoAudit](docs/screenshots/zulip-repoaudit.png)
+
+### Gitea：仓库活动
+
+自托管 Gitea 上的推送与仓库创建记录，与上方 Zulip 通知对应。
+
+![Gitea 活动](docs/screenshots/gitea-activity.png)
+
+### Project Ledger：项目注册中心
+
+Mentor 维护项目名片（Zulip Topic、文档路径、Gitea、成员），并查看 progress-sop 落库的 SOP 报告。
+
+![Project Ledger](docs/screenshots/project-ledger.png)
+
 ## 代码与 Agent Workspace
 
 ```text

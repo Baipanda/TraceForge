@@ -67,4 +67,6 @@ def build_markdown_memory_index(
         embedder=embedder,
         search_mode=search_mode,
         hybrid_fts_weight=settings.memory_hybrid_fts_weight,
+        embed_fail_threshold=settings.memory_embed_fail_threshold,
+        embed_degrade_cooldown_s=settings.memory_embed_degrade_cooldown_s,
     )

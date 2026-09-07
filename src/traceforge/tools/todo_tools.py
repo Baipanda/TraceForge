@@ -41,7 +41,7 @@ def build_default_tool_registry(
     memory_index = memory_index or MarkdownMemoryIndex(repository.db_path, memory_store)
     registry = ToolRegistry(policy=policy)
     register_people_tools(registry, person_store)
-    register_memory_tools(registry, index=memory_index)
+    register_memory_tools(registry, index=memory_index, settings=settings)
     register_todo_tools(registry, workflow, memory_index=memory_index)
     register_zulip_tools(registry, repository, settings=settings, memory_index=memory_index)
     register_web_tools(registry, settings=settings)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import ssl
 import time
 import urllib.error
@@ -31,6 +32,7 @@ class ZulipTraceForgeBridge:
     settings: TraceForgeSettings = field(default_factory=get_settings)
     account: ZulipBotAccount | None = None
     seen_message_ids: set[int] = field(default_factory=set)
+    peer_bot_emails: set[str] = field(default_factory=set)
 
     def _bot(self) -> ZulipBotAccount:
         if self.account is not None:
@@ -117,6 +119,15 @@ class ZulipTraceForgeBridge:
         bot = self._bot()
         if sender_email.lower() == bot.email.lower():
             return
+        # Never react to peer Workspace bots (prevents Jarvis ↔ RepoAudit ping-pong).
+        if sender_email.lower() in {email.lower() for email in self.peer_bot_emails}:
+            logger.info(
+                "Ignoring peer-bot message id=%s from=%s bot=%s",
+                message_id,
+                sender_email,
+                bot.bot_name,
+            )
+            return
         if not self._should_handle_message(message):
             return
 
@@ -150,20 +161,26 @@ class ZulipTraceForgeBridge:
             self._stop_progress(message, succeeded=succeeded)
 
     def _should_handle_message(self, message: dict[str, Any]) -> bool:
+        """Require an explicit @mention — bare name substring matches cause bot loops."""
         message_type = str(message.get("type") or "")
         if message_type == "private":
             return True
         content = _plain_text(str(message.get("content") or ""))
         bot = self._bot()
-        bot_name = bot.bot_name.lower()
-        bot_email = bot.email.lower()
-        lowered = content.lower()
-        return (
-            f"@{bot_name}" in lowered
-            or bot_name in lowered
-            or bot_email in lowered
-            or f"@**{bot_name}**" in lowered
-        )
+        bot_name = bot.bot_name.strip()
+        if not bot_name:
+            return False
+        # Zulip mention forms after markdown / plain text:
+        #   @Jarvis  @**Jarvis**  @_**Jarvis**  @Jarvis-bot@...
+        patterns = [
+            rf"(?<!\w)@{re.escape(bot_name)}(?!\w)",
+            rf"@\*\*{re.escape(bot_name)}\*\*",
+            rf"@_\*\*{re.escape(bot_name)}\*\*",
+        ]
+        email_local = bot.email.split("@", 1)[0].strip()
+        if email_local:
+            patterns.append(rf"(?<!\w)@{re.escape(email_local)}(?!\w)")
+        return any(re.search(pat, content, flags=re.IGNORECASE) for pat in patterns)
 
     def _call_traceforge(self, event: dict[str, Any]) -> dict[str, Any]:
         bot = self._bot()
@@ -389,9 +406,11 @@ def _typing_payload(message: dict[str, Any], *, op: str) -> dict[str, str] | Non
 
 def _plain_text(html_or_text: str) -> str:
     text = html_or_text.replace("<p>", "").replace("</p>", " ")
-    for token in ("<strong>", "</strong>", "<em>", "</em>"):
+    for token in ("<strong>", "</strong>", "<em>", "</em>", "<code>", "</code>"):
         text = text.replace(token, "")
-    return text.strip()
+    # Zulip user mention spans often leave the display name; keep '@Name' searchable.
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _is_bad_event_queue(exc: Exception) -> bool:
@@ -426,13 +445,22 @@ def main() -> None:
     else:
         logger.warning("RepoAudit Zulip credentials missing; only Jarvis bridge will run")
 
+    peer_emails = {account.email for account in accounts}
     if len(accounts) == 1:
-        ZulipTraceForgeBridge(settings=settings, account=accounts[0]).run_forever()
+        ZulipTraceForgeBridge(
+            settings=settings,
+            account=accounts[0],
+            peer_bot_emails=peer_emails - {accounts[0].email},
+        ).run_forever()
         return
 
     threads: list[threading.Thread] = []
     for account in accounts:
-        bridge = ZulipTraceForgeBridge(settings=settings, account=account)
+        bridge = ZulipTraceForgeBridge(
+            settings=settings,
+            account=account,
+            peer_bot_emails=peer_emails - {account.email},
+        )
         thread = threading.Thread(
             target=bridge.run_forever,
             name=f"zulip-bridge-{account.bot_name}",

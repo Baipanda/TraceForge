@@ -15,15 +15,30 @@ def build_zform_choices(
     *,
     heading: str,
     choices: list[dict[str, str]],
+    numbered: bool = True,
 ) -> dict[str, Any]:
+    """Build a Zulip zform widget.
+
+    When ``numbered`` is True (default), the select control shows the full
+    ``1. <explanation>`` label via ``short_name`` only. ``long_name`` is left
+    empty — Zulip otherwise renders short_name + long_name side-by-side (duplicate).
+    """
     normalized = []
-    for item in choices:
+    for index, item in enumerate(choices, start=1):
+        short = str(item.get("short_name") or item.get("label") or "").strip()
+        long = str(item.get("long_name") or item.get("description") or "").strip()
+        reply = str(item.get("reply") or "").strip()
+        if numbered:
+            explanation = _strip_leading_index(long or short)
+            label = f"{index}. {explanation}" if explanation else str(index)
+            short = label
+            long = ""
         normalized.append(
             {
                 "type": "multiple_choice",
-                "short_name": str(item.get("short_name") or item.get("label") or "").strip(),
-                "long_name": str(item.get("long_name") or item.get("description") or "").strip(),
-                "reply": str(item.get("reply") or "").strip(),
+                "short_name": short,
+                "long_name": long,
+                "reply": reply,
             }
         )
     return {
@@ -34,6 +49,25 @@ def build_zform_choices(
             "choices": normalized,
         },
     }
+
+
+def format_numbered_menu(choices: list[dict[str, str]]) -> str:
+    """Markdown menu lines mirroring Claude Code option list."""
+    lines: list[str] = []
+    for index, item in enumerate(choices, start=1):
+        long = str(item.get("long_name") or item.get("description") or item.get("short_name") or "").strip()
+        explanation = _strip_leading_index(long)
+        lines.append(f"{index}. {explanation}" if explanation else f"{index}.")
+    return "\n".join(lines)
+
+
+def _strip_leading_index(text: str) -> str:
+    text = (text or "").strip()
+    if len(text) >= 2 and text[0].isdigit() and text[1] in {".", "、", ")", "］", "]"}:
+        return text[2:].strip()
+    if len(text) >= 3 and text[0].isdigit() and text[1].isdigit() and text[2] in {".", "、", ")"}:
+        return text[3:].strip()
+    return text
 
 
 def register_zulip_choice_tools(
@@ -114,7 +148,8 @@ def register_zulip_choice_tools(
             description=(
                 "Send a Zulip zform multiple-choice widget so the user can click options. "
                 "Use for HITL gates (approve/reject, pick window, next action). "
-                "Each choice needs short_name, long_name, reply."
+                "Each choice needs a description (long_name) and reply; "
+                "options are auto-numbered 1/2/3 in the Zulip select box."
             ),
             schema={
                 "type": "object",

@@ -39,6 +39,24 @@ def test_bridge_ignores_stream_message_without_mention() -> None:
     )
 
 
+def test_bridge_ignores_bare_bot_name_without_at_mention() -> None:
+    """Substring 'Jarvis' must NOT trigger — that caused Jarvis↔RepoAudit loops."""
+    bridge = ZulipTraceForgeBridge(settings=_settings())
+
+    assert not bridge._should_handle_message(
+        {
+            "type": "stream",
+            "content": "<p>这条消息来自 RepoAudit，Jarvis 无需处理。</p>",
+        }
+    )
+    assert not bridge._should_handle_message(
+        {
+            "type": "stream",
+            "content": "<p>This is Jarvis again confirming there's no audit request.</p>",
+        }
+    )
+
+
 def test_bridge_replies_to_same_stream_name() -> None:
     assert _stream_name({"display_recipient": "security", "stream_id": 42}) == "security"
 

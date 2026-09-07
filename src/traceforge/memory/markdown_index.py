@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from dataclasses import dataclass, replace
@@ -16,6 +17,9 @@ from traceforge.memory.embeddings import (
     vector_to_blob,
 )
 from traceforge.memory.markdown_store import MarkdownMemoryStore, MemoryKind
+from traceforge.retrieval.circuit_breaker import CircuitBreaker
+
+logger = logging.getLogger(__name__)
 
 MemorySearchMode = Literal["fts", "vector", "hybrid"]
 
@@ -44,6 +48,27 @@ class MemoryChunkHit:
         }
 
 
+@dataclass(frozen=True)
+class MemorySearchOutcome:
+    """Search hits plus degrade metadata for tools / demos / interviews."""
+
+    hits: list[MemoryChunkHit]
+    requested_mode: str
+    effective_mode: str
+    degraded: bool
+    degrade_reason: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "count": len(self.hits),
+            "hits": [hit.to_dict() for hit in self.hits],
+            "requested_mode": self.requested_mode,
+            "effective_mode": self.effective_mode,
+            "degraded": self.degraded,
+            "degrade_reason": self.degrade_reason,
+        }
+
+
 class MarkdownMemoryIndex:
     """Derived search index; Markdown remains the source of truth."""
 
@@ -55,13 +80,24 @@ class MarkdownMemoryIndex:
         embedder: EmbeddingProvider | None = None,
         search_mode: MemorySearchMode = "hybrid",
         hybrid_fts_weight: float = 0.5,
+        embed_fail_threshold: int = 2,
+        embed_degrade_cooldown_s: float = 60.0,
     ) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.store = store or MarkdownMemoryStore()
         self.embedder = embedder
+        self.configured_search_mode: MemorySearchMode = search_mode
         self.search_mode = search_mode if embedder is not None else "fts"
         self.hybrid_fts_weight = min(1.0, max(0.0, hybrid_fts_weight))
+        self.embed_fail_threshold = max(1, embed_fail_threshold)
+        self.embed_degrade_cooldown_s = max(1.0, embed_degrade_cooldown_s)
+        # Embed-path only: OPEN → dual-path degrades to FTS until cooldown probe succeeds.
+        self._embed_breaker = CircuitBreaker(
+            failure_threshold=self.embed_fail_threshold,
+            recovery_s=self.embed_degrade_cooldown_s,
+            name="memory.embed",
+        )
         self._ensure_schema()
         self.reindex_all()
 
@@ -105,23 +141,103 @@ class MarkdownMemoryIndex:
         person_id: str | None = None,
         limit: int = 8,
     ) -> list[MemoryChunkHit]:
+        return self.search_detailed(
+            query, kinds=kinds, person_id=person_id, limit=limit
+        ).hits
+
+    def search_detailed(
+        self,
+        query: str,
+        *,
+        kinds: tuple[str, ...] | None = None,
+        person_id: str | None = None,
+        limit: int = 8,
+    ) -> MemorySearchOutcome:
         query = (query or "").strip()
+        requested = self.configured_search_mode if self.embedder is not None else "fts"
         if not query:
-            return []
+            return MemorySearchOutcome(
+                hits=[],
+                requested_mode=requested,
+                effective_mode="fts",
+                degraded=False,
+            )
         kinds = kinds or ("daily", "decision", "core", "preference")
         limit = max(1, min(limit, 20))
-        mode = self.search_mode if self.embedder is not None else "fts"
+
+        if self.embedder is None:
+            hits = self._search_fts_or_like(query, kinds=kinds, person_id=person_id, limit=limit)
+            return MemorySearchOutcome(
+                hits=hits,
+                requested_mode=self.configured_search_mode,
+                effective_mode="fts",
+                degraded=self.configured_search_mode != "fts",
+                degrade_reason="no_embedder" if self.configured_search_mode != "fts" else None,
+            )
+
+        if not self._embed_breaker.allow():
+            hits = self._search_fts_or_like(query, kinds=kinds, person_id=person_id, limit=limit)
+            return MemorySearchOutcome(
+                hits=hits,
+                requested_mode=requested,
+                effective_mode="fts",
+                degraded=True,
+                degrade_reason="embedding_circuit_open",
+            )
+
+        mode = self.search_mode
         if mode == "fts":
-            hits = self._search_fts(query, kinds=kinds, person_id=person_id, limit=limit)
-            if hits:
-                return hits
-            return self._search_like(query, kinds=kinds, person_id=person_id, limit=limit)
+            hits = self._search_fts_or_like(query, kinds=kinds, person_id=person_id, limit=limit)
+            return MemorySearchOutcome(
+                hits=hits,
+                requested_mode=requested,
+                effective_mode="fts",
+                degraded=False,
+            )
+
         if mode == "vector":
-            hits = self._search_vector(query, kinds=kinds, person_id=person_id, limit=limit)
-            if hits:
-                return hits
-            return self._search_like(query, kinds=kinds, person_id=person_id, limit=limit)
-        return self._search_hybrid(query, kinds=kinds, person_id=person_id, limit=limit)
+            vector_hits, embed_error = self._search_vector(
+                query, kinds=kinds, person_id=person_id, limit=limit
+            )
+            if embed_error:
+                hits = self._search_fts_or_like(query, kinds=kinds, person_id=person_id, limit=limit)
+                return MemorySearchOutcome(
+                    hits=hits,
+                    requested_mode=requested,
+                    effective_mode="fts",
+                    degraded=True,
+                    degrade_reason=embed_error,
+                )
+            if vector_hits:
+                return MemorySearchOutcome(
+                    hits=vector_hits,
+                    requested_mode=requested,
+                    effective_mode="vector",
+                    degraded=False,
+                )
+            hits = self._search_like(query, kinds=kinds, person_id=person_id, limit=limit)
+            return MemorySearchOutcome(
+                hits=hits,
+                requested_mode=requested,
+                effective_mode="like",
+                degraded=False,
+            )
+
+        return self._search_hybrid_detailed(query, kinds=kinds, person_id=person_id, limit=limit)
+
+    def degrade_status(self) -> dict[str, Any]:
+        snap = self._embed_breaker.snapshot()
+        forced = snap["state"] == "open"
+        return {
+            "embedder": type(self.embedder).__name__ if self.embedder else None,
+            "configured_mode": self.configured_search_mode,
+            "active_mode": "fts" if (self.embedder is None or forced) else self.search_mode,
+            "force_fts": forced,
+            "embed_breaker": snap,
+            # Back-compat aliases for older tests / demos.
+            "embed_fail_count": snap["fail_count"],
+            "force_fts_until": snap["opened_at"],
+        }
 
     def get_file(self, relative_path: str, *, max_chars: int = 4000) -> dict[str, Any]:
         text = self.store.read_file(relative_path)
@@ -133,7 +249,7 @@ class MarkdownMemoryIndex:
             "chars": len(text),
         }
 
-    def _search_hybrid(
+    def _search_fts_or_like(
         self,
         query: str,
         *,
@@ -141,11 +257,44 @@ class MarkdownMemoryIndex:
         person_id: str | None,
         limit: int,
     ) -> list[MemoryChunkHit]:
+        hits = self._search_fts(query, kinds=kinds, person_id=person_id, limit=limit)
+        if hits:
+            return hits
+        return self._search_like(query, kinds=kinds, person_id=person_id, limit=limit)
+
+    def _search_hybrid_detailed(
+        self,
+        query: str,
+        *,
+        kinds: tuple[str, ...],
+        person_id: str | None,
+        limit: int,
+    ) -> MemorySearchOutcome:
+        requested = self.configured_search_mode
         candidate_limit = min(limit * 3, 30)
         fts_hits = self._search_fts(query, kinds=kinds, person_id=person_id, limit=candidate_limit)
-        vector_hits = self._search_vector(query, kinds=kinds, person_id=person_id, limit=candidate_limit)
+        vector_hits, embed_error = self._search_vector(
+            query, kinds=kinds, person_id=person_id, limit=candidate_limit
+        )
+        if embed_error:
+            hits = fts_hits or self._search_like(
+                query, kinds=kinds, person_id=person_id, limit=limit
+            )
+            return MemorySearchOutcome(
+                hits=hits[:limit],
+                requested_mode=requested,
+                effective_mode="fts",
+                degraded=True,
+                degrade_reason=embed_error,
+            )
         if not fts_hits and not vector_hits:
-            return self._search_like(query, kinds=kinds, person_id=person_id, limit=limit)
+            hits = self._search_like(query, kinds=kinds, person_id=person_id, limit=limit)
+            return MemorySearchOutcome(
+                hits=hits,
+                requested_mode=requested,
+                effective_mode="like",
+                degraded=False,
+            )
 
         merged: dict[tuple[str, str], MemoryChunkHit] = {}
         fts_norm = _rank_scores(fts_hits, score_attr="fts_score")
@@ -173,7 +322,21 @@ class MarkdownMemoryIndex:
                 )
 
         ranked = sorted(merged.values(), key=lambda item: item.score, reverse=True)
-        return ranked[:limit]
+        return MemorySearchOutcome(
+            hits=ranked[:limit],
+            requested_mode=requested,
+            effective_mode="hybrid",
+            degraded=False,
+        )
+
+    def _on_embed_success(self) -> None:
+        self._embed_breaker.record_success()
+
+    def _on_embed_failure(self, exc: BaseException) -> str:
+        self._embed_breaker.record_failure()
+        if self._embed_breaker.state.value == "open":
+            return "embedding_circuit_open"
+        return f"embedding_error:{type(exc).__name__}"
 
     def _search_fts(
         self,
@@ -219,13 +382,14 @@ class MarkdownMemoryIndex:
         kinds: tuple[str, ...],
         person_id: str | None,
         limit: int,
-    ) -> list[MemoryChunkHit]:
+    ) -> tuple[list[MemoryChunkHit], str | None]:
         if self.embedder is None:
-            return []
+            return [], "no_embedder"
         try:
             query_vector = self.embedder.embed([query])[0]
-        except Exception:
-            return []
+            self._on_embed_success()
+        except Exception as exc:  # noqa: BLE001
+            return [], self._on_embed_failure(exc)
 
         placeholders = ",".join("?" for _ in kinds)
         params: list[Any] = [self.embedder.model, *kinds]
@@ -261,7 +425,7 @@ class MarkdownMemoryIndex:
                 )
             )
         scored.sort(key=lambda item: item.vector_score, reverse=True)
-        return scored[:limit]
+        return scored[:limit], None
 
     def _search_like(
         self,
@@ -317,7 +481,9 @@ class MarkdownMemoryIndex:
             batch = missing[start : start + batch_size]
             try:
                 vectors = self.embedder.embed([text for _, text in batch])
-            except Exception:
+                self._on_embed_success()
+            except Exception as exc:  # noqa: BLE001
+                self._on_embed_failure(exc)
                 return
             with self._connect() as conn:
                 for (digest, _), vector in zip(batch, vectors, strict=True):

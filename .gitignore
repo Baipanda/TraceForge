@@ -11,3 +11,4 @@ build/
 .env.*
 !.env.example
 .traceforge/
+workspace_shared/runs/

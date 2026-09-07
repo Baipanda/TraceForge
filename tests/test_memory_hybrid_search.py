@@ -104,8 +104,74 @@ def test_fts_fallback_when_no_embedder(tmp_path) -> None:
         encoding="utf-8",
     )
     store = MarkdownMemoryStore(workspace)
-    index = MarkdownMemoryIndex(tmp_path / "mem.sqlite3", store)
+    index = MarkdownMemoryIndex(
+        tmp_path / "mem.sqlite3",
+        store,
+        search_mode="hybrid",
+    )
 
-    hits = index.search("OAuth2", kinds=("decision",))
-    assert hits
-    assert hits[0].vector_score == 0.0
+    outcome = index.search_detailed("OAuth2", kinds=("decision",))
+    assert outcome.hits
+    assert outcome.hits[0].vector_score == 0.0
+    assert outcome.effective_mode == "fts"
+    assert outcome.degraded is True
+    assert outcome.degrade_reason == "no_embedder"
+
+
+class _FailingEmbedder:
+    model = "fail-test"
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        raise RuntimeError("embedding down")
+
+
+def test_hybrid_degrades_to_fts_when_embed_fails(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "memory").mkdir(parents=True)
+    (workspace / "memory" / "DECISION.md").write_text(
+        "# Decisions\n\n## Auth\n\n采用 OAuth2 作为登录方案。\n",
+        encoding="utf-8",
+    )
+    store = MarkdownMemoryStore(workspace)
+    index = MarkdownMemoryIndex(
+        tmp_path / "mem.sqlite3",
+        store,
+        embedder=_FailingEmbedder(),
+        search_mode="hybrid",
+        embed_fail_threshold=2,
+        embed_degrade_cooldown_s=30,
+    )
+    # reindex already recorded one embed failure; next search trips the circuit.
+    outcome = index.search_detailed("OAuth2", kinds=("decision",))
+    assert outcome.hits
+    assert outcome.degraded is True
+    assert outcome.effective_mode == "fts"
+    assert outcome.degrade_reason in {"embedding_circuit_open", "embedding_error:RuntimeError"}
+    assert index.degrade_status()["force_fts"] is True
+
+    # While circuit is open, search stays on FTS without re-calling embedder.
+    again = index.search_detailed("OAuth2", kinds=("decision",))
+    assert again.degraded is True
+    assert again.degrade_reason == "embedding_circuit_open"
+
+
+def test_memory_search_tool_exposes_degraded_meta(tmp_path) -> None:
+    from traceforge.tools.memory_tools import register_memory_tools
+    from traceforge.tools.models import ToolCall
+    from traceforge.tools.registry import ToolRegistry
+
+    workspace = tmp_path / "workspace"
+    (workspace / "memory").mkdir(parents=True)
+    (workspace / "memory" / "DECISION.md").write_text(
+        "# Decisions\n\n## Auth\n\n采用 OAuth2 作为登录方案。\n",
+        encoding="utf-8",
+    )
+    store = MarkdownMemoryStore(workspace)
+    index = MarkdownMemoryIndex(tmp_path / "mem.sqlite3", store, search_mode="hybrid")
+    registry = ToolRegistry()
+    register_memory_tools(registry, index=index, store=store)
+    result = registry.call(ToolCall(name="memory.search", arguments={"query": "OAuth2"}))
+    assert result.ok
+    assert result.data["degraded"] is True
+    assert result.data["effective_mode"] == "fts"
+    assert result.data["degrade_reason"] == "no_embedder"

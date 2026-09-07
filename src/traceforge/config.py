@@ -67,6 +67,17 @@ class TraceForgeSettings:
     memory_embedding_api_key: str | None = None
     memory_embedding_base_url: str = ""
     memory_hybrid_fts_weight: float = 0.5
+    memory_embed_fail_threshold: int = 2
+    memory_embed_degrade_cooldown_s: float = 60.0
+    memory_retrieve_cache_ttl_s: float = 120.0
+    memory_retrieve_timeout_s: float = 8.0
+    memory_retrieve_rewrite: bool = True
+    memory_retrieve_rerank: bool = False
+    memory_retrieve_tool_fail_threshold: int = 5
+    memory_retrieve_tool_recovery_s: float = 60.0
+    progress_sop_hitl_timeout_seconds: int = 600
+    progress_sop_hitl_a_on_timeout: str = "default"
+    progress_sop_hitl_b_on_timeout: str = "cancel"
     session_keep_recent_tokens: int = 20_000
     gitea_webhook_secret: str = ""
     repoaudit_zulip_email: str = ""
@@ -142,6 +153,37 @@ def get_settings() -> TraceForgeSettings:
             os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         ),
         memory_hybrid_fts_weight=float(os.environ.get("TRACEFORGE_MEMORY_HYBRID_FTS_WEIGHT", "0.5")),
+        memory_embed_fail_threshold=int(
+            os.environ.get("TRACEFORGE_MEMORY_EMBED_FAIL_THRESHOLD", "2")
+        ),
+        memory_embed_degrade_cooldown_s=float(
+            os.environ.get("TRACEFORGE_MEMORY_EMBED_DEGRADE_COOLDOWN_S", "60")
+        ),
+        memory_retrieve_cache_ttl_s=float(
+            os.environ.get("TRACEFORGE_MEMORY_RETRIEVE_CACHE_TTL_S", "120")
+        ),
+        memory_retrieve_timeout_s=float(
+            os.environ.get("TRACEFORGE_MEMORY_RETRIEVE_TIMEOUT_S", "8")
+        ),
+        memory_retrieve_rewrite=env_bool("TRACEFORGE_MEMORY_RETRIEVE_REWRITE", True),
+        memory_retrieve_rerank=env_bool("TRACEFORGE_MEMORY_RETRIEVE_RERANK", False),
+        memory_retrieve_tool_fail_threshold=int(
+            os.environ.get("TRACEFORGE_MEMORY_RETRIEVE_TOOL_FAIL_THRESHOLD", "5")
+        ),
+        memory_retrieve_tool_recovery_s=float(
+            os.environ.get("TRACEFORGE_MEMORY_RETRIEVE_TOOL_RECOVERY_S", "60")
+        ),
+        progress_sop_hitl_timeout_seconds=int(
+            os.environ.get("TRACEFORGE_PROGRESS_SOP_HITL_TIMEOUT_SECONDS", "600")
+        ),
+        progress_sop_hitl_a_on_timeout=os.environ.get(
+            "TRACEFORGE_PROGRESS_SOP_HITL_A_ON_TIMEOUT", "default"
+        ).strip().lower()
+        or "default",
+        progress_sop_hitl_b_on_timeout=os.environ.get(
+            "TRACEFORGE_PROGRESS_SOP_HITL_B_ON_TIMEOUT", "cancel"
+        ).strip().lower()
+        or "cancel",
         session_keep_recent_tokens=int(
             os.environ.get("TRACEFORGE_SESSION_KEEP_RECENT_TOKENS", "20000")
         ),

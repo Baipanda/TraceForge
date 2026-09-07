@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from traceforge.config import TraceForgeSettings, get_settings
+from traceforge.infrastructure.llm.deepseek import DeepSeekClient
 from traceforge.memory.markdown_index import MarkdownMemoryIndex
 from traceforge.memory.markdown_store import MarkdownMemoryStore
+from traceforge.retrieval.retriever import Retriever, build_memory_retriever
 from traceforge.tools.models import ToolResult
 from traceforge.tools.registry import RegisteredTool, ToolRegistry
 
@@ -13,16 +16,21 @@ def register_memory_tools(
     *,
     index: MarkdownMemoryIndex,
     store: MarkdownMemoryStore | None = None,
+    retriever: Retriever | None = None,
+    settings: TraceForgeSettings | None = None,
 ) -> None:
     store = store or index.store
+    settings = settings or get_settings()
+    retriever = retriever or _build_retriever(index, settings)
 
     registry.register(
         RegisteredTool(
             name="memory.search",
             description=(
-                "Search Markdown memory (daily notes, decisions, core, preferences). "
-                "Uses FTS5 and optional embedding hybrid recall when configured. "
-                "Preferences for the current speaker are often already injected."
+                "Search Markdown memory (daily notes, decisions, core, preferences) via the "
+                "unified retriever: TTL cache → query rewrite → parallel FTS∥vector → merge → "
+                "optional LLM rerank. Embed failures degrade to FTS; tool-level timeout/breaker "
+                "uses fallback with degrade_reason metadata."
             ),
             schema={
                 "type": "object",
@@ -37,10 +45,15 @@ def register_memory_tools(
                     },
                     "person_id": {"type": "string"},
                     "limit": {"type": "integer"},
+                    "corpus": {
+                        "type": "string",
+                        "enum": ["memory", "docs"],
+                        "description": "Default memory; docs when a docs corpus is registered.",
+                    },
                 },
                 "required": ["query"],
             },
-            handler=lambda arguments: _search(index, arguments),
+            handler=lambda arguments: _search(retriever, arguments),
         )
     )
     registry.register(
@@ -79,7 +92,26 @@ def register_memory_tools(
     )
 
 
-def _search(index: MarkdownMemoryIndex, arguments: dict[str, Any]) -> ToolResult:
+def _build_retriever(index: MarkdownMemoryIndex, settings: TraceForgeSettings) -> Retriever:
+    rerank_client = None
+    if settings.memory_retrieve_rerank and settings.llm_enabled:
+        try:
+            rerank_client = DeepSeekClient(settings, timeout_seconds=min(8.0, settings.memory_retrieve_timeout_s))
+        except Exception:
+            rerank_client = None
+    return build_memory_retriever(
+        index,
+        cache_ttl_s=settings.memory_retrieve_cache_ttl_s,
+        tool_timeout_s=settings.memory_retrieve_timeout_s,
+        enable_rewrite=settings.memory_retrieve_rewrite,
+        enable_rerank=settings.memory_retrieve_rerank and rerank_client is not None,
+        rerank_client=rerank_client,
+        tool_fail_threshold=settings.memory_retrieve_tool_fail_threshold,
+        tool_recovery_s=settings.memory_retrieve_tool_recovery_s,
+    )
+
+
+def _search(retriever: Retriever, arguments: dict[str, Any]) -> ToolResult:
     query = str(arguments.get("query") or "").strip()
     if not query:
         return ToolResult(tool_name="memory.search", ok=False, error="query 不能为空")
@@ -89,17 +121,15 @@ def _search(index: MarkdownMemoryIndex, arguments: dict[str, Any]) -> ToolResult
         kinds = tuple(str(item) for item in kinds_raw if isinstance(item, str))
     person_id = arguments.get("person_id")
     limit = int(arguments.get("limit") or 8)
-    hits = index.search(
+    corpus = str(arguments.get("corpus") or "memory").strip() or "memory"
+    result = retriever.search(
         query,
+        corpus=corpus,
+        top_k=limit,
         kinds=kinds,
         person_id=str(person_id) if person_id else None,
-        limit=limit,
     )
-    return ToolResult(
-        tool_name="memory.search",
-        ok=True,
-        data={"query": query, "count": len(hits), "hits": [hit.to_dict() for hit in hits]},
-    )
+    return ToolResult(tool_name="memory.search", ok=True, data=result.to_dict())
 
 
 def _get(index: MarkdownMemoryIndex, arguments: dict[str, Any]) -> ToolResult:

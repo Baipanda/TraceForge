@@ -58,11 +58,11 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             print(
-                "  ./scripts/download_embedding.sh",
+                "  HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1 \\",
                 file=sys.stderr,
             )
             print(
-                "  或: HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1 ./scripts/download_embedding.sh",
+                "    python -m traceforge.memory.download_embedding",
                 file=sys.stderr,
             )
             print(
